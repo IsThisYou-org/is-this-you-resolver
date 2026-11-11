@@ -1,0 +1,12 @@
+# PEM files hold the private key and the certificate. Never commit them.
+*.pem
+data/easy-nginx/pems/*.pem
+
+# Scratch directories the containers create under the host mounts.
+data/easy-nginx/logs/
+data/easy-nginx/htdocs/
+data/handshake-volume-resolver/logs/
+
+# Handshake chain and syslog under the full-node bind mount.
+data/handshake-full-node/*
+!data/handshake-full-node/.gitkeep
