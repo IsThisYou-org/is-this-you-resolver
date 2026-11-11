@@ -7,7 +7,7 @@ Inspected on 11 November 2026, default-branch tips:
 | [james-stevens/easy-nginx](https://github.com/james-stevens/easy-nginx) | `260a788c4658bd788b664170a2fab9532801961d` | `README.md`, `Dockerfile`, `dkrun`, `dkmk`, `list`, `push_to_docker`, `nginx/nginx.conf`, `nginx/plain.conf`, `nginx/nolog.conf`, `bin/start_nginx`, `bin/set_conf`, `bin/remake_conf`, `bin/update_pems`, `bin/start_syslogd` |
 | [james-stevens/dnsflsk](https://github.com/james-stevens/dnsflsk) | `b7bb1c538af3f0650b1b711cf05802f845ce6eda` | `README.md`, `Dockerfile`, `dkrun`, `dkmk`, `list`, `push_to_docker`, `etc/nginx.conf`, `etc/inittab`, `bin/start_wsgi`, `python/dnsflsk.py`, `python/resolv.py` |
 | [james-stevens/handshake-volume-resolver](https://github.com/james-stevens/handshake-volume-resolver) | `7f10baaf875a5b796b1bba423568a0c2880c1cc6` | `README.md`, `Dockerfile`, `dkrun`, `dkmk`, `list`, `inittab`, `etc/named.conf`, `etc/haproxy.cfg`, `etc/with_eth.inc`, `bin/start_named`, `bin/start_dnsdist`, `bin/start_root_proxy`, `bin/start_syslogd`, `bin/start_exporter`, `root_proxy/root_proxy.c`, `root_proxy/liball.c` |
-| [james-stevens/handshake-full-node](https://github.com/james-stevens/handshake-full-node) | `dev` `0a4ad9f438606ab4a0858c01fed0b2e963395577` (6 November 2025). Default branch `master` is the older `ec445d7c35272041cec29c3904c36f7454201ac1` | `README.md`, `Dockerfile`, `dkrun`, `bin/run_hsd`, `bin/start_syslogd`, `inittab`, and `hsd-8.0.0/hsd/lib/protocol/networks.js` for the default peer port |
+| [james-stevens/handshake-full-node](https://github.com/james-stevens/handshake-full-node) | `42957c8eacf1981bd0be1a849db282e05059dc9a` (`master` and `dev`) | `README.md`, `Dockerfile`, `dkrun`, `bin/run_hsd`, `bin/start_syslogd`, `inittab`, and `hsd-8.0.0/hsd/lib/protocol/networks.js` for the default peer port |
 
 Docker Hub confirmed the four image names this file uses. None of the repositories contains a Compose file. There is no published image tag that this repository can pin: `push_to_docker` tags `jamesstevens/<name>` and a date tag.
 
@@ -19,7 +19,7 @@ These values are not in a Compose example upstream. They are the published run f
 - Service names match the repository names. The diagram label `dns-flask` is this `dnsflsk` repository. Its image name is `flask-doh`.
 - `--read-only` is set on every service because every `dkrun` sets it.
 - `handshake-volume-resolver` memory limit `1g` and `nofile` 15000 match its `dkrun`.
-- Volume path `/opt/data` matches `dkrun` for easy-nginx, handshake-volume-resolver, and the latest handshake-full-node. That full-node code keeps the chain in `/opt/data/hsd`.
+- Volume path `/opt/data` matches `dkrun` for easy-nginx, handshake-volume-resolver, and handshake-full-node. That full-node code keeps the chain in `/opt/data/hsd`.
 - `HSD_MASTERS` and `DOH_SERVERS` are the README variables those two images use to find a neighbour.
 
 ## easy-nginx layout
@@ -41,15 +41,13 @@ No certificate material is in any of the four repositories, or in this one. Oper
 
 ## handshake-full-node
 
-The latest code is branch `dev` at `0a4ad9f` (6 November 2025). `bin/run_hsd` stores the chain in `/opt/data/hsd` and changes that directory's owner to the `hsd` user. `dkrun` mounts a host directory at `/opt/data`. Docker Hub `latest` (build `20251106.1538`) is this code.
+`master` and `dev` both point to `42957c8` (11 November 2026), the merge of pull request #5 ("Split recursive & AUTH queries on the RD bit"). `bin/run_hsd` stores the chain in `/opt/data/hsd` and changes that directory's owner to the `hsd` user. `dkrun` mounts a host directory at `/opt/data`. Docker Hub `latest` (build `20251106.1538`) already reflected this code before that merge.
 
 `rd_bit_proxy` listens on port 53, so both hsd services are reached through that one port. hsd itself still uses two ports: authoritative, root zone only, on 5349, and recursive on 5350. The preferred split is the RD bit. `inittab` runs `rd_bit_proxy -s 0.0.0.0:53 -a 127.0.0.1 -r 127.0.0.1`. With no port on `-a` or `-r`, the binary uses 5349 and 5350.
 
 Compose bind-mounts three host directories, all under `./data` by default, each at `/opt/data` in its container. The chain is therefore at `data/handshake-full-node/hsd` on the host and `/opt/data/hsd` in the container. Set `DATA_DIR` to another absolute path to place that whole tree, including the chain, on a larger disk. `DATA_DIR` is Compose interpolation, not a variable inside a container. There is no named Docker volume. `HSD_MASTERS` is `172.30.53.10` with no port, so root_proxy uses port 53.
 
-Default branch `master` at `ec445d7` is an older tree. It listens on 153 and 253 and stores data in `/opt/hsd-data`.
-
-`run_hsd` reads `HSD_LOG_LEVEL` (default `info`) and `HSD_ADDITIONAL_PARAMS` (default `--no-sig0 --no-wallet`). `start_syslogd` reads `SYSLOG_SERVER` and `SYSLOG_STDOUT`, which the latest README also documents. With both unset, syslog goes to `/opt/data/logs/messages`.
+`run_hsd` reads `HSD_LOG_LEVEL` (default `info`) and `HSD_ADDITIONAL_PARAMS` (default `--no-sig0 --no-wallet`). `start_syslogd` reads `SYSLOG_SERVER` and `SYSLOG_STDOUT`, which its README also documents. With both unset, syslog goes to `/opt/data/logs/messages`.
 
 ## Addresses
 
