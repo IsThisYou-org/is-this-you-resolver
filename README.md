@@ -164,7 +164,7 @@ The easy-nginx README does not describe this layout. The paths match its `dkrun`
 | `handshake-volume-resolver/` | `/opt/data` | Resolver state and syslog. Optional authoritative zones go in `auth_zones/`, one file per zone, file name equal to the zone name. Create that directory only when it contains zone files. An empty directory makes this image try to load a zone named `*`. |
 | `easy-nginx/` | `/opt/data` | easy-nginx scratch space, `etc/nginx.input`, and `pems/`. Profile `tls` only. |
 
-The latest handshake-full-node code stores the chain in `/opt/data/hsd` (`bin/run_hsd` on branch `dev`, commit `0a4ad9f`) and changes that directory's owner to the `hsd` user. `rd_bit_proxy` listens on port 53. hsd itself still uses a separate authoritative port (root zone only) and a recursive port; the proxy is how both are reached, split on the RD bit. Default branch `master` at `ec445d7` is an older tree and still documents `/opt/hsd-data`.
+handshake-full-node stores the chain in `/opt/data/hsd` (`bin/run_hsd`; `master` and `dev` are both `42957c8`) and changes that directory's owner to the `hsd` user. `rd_bit_proxy` listens on port 53. hsd itself still uses a separate authoritative port (root zone only) and a recursive port; the proxy is how both are reached, split on the RD bit.
 
 ## Environment
 
@@ -179,7 +179,7 @@ The network `resolver` is `172.30.53.0/24`. That subnet sits inside the default 
 
 Left at the image defaults, and documented by those READMEs:
 
-- `HSD_LOG_LEVEL` (default `info`) and `HSD_ADDITIONAL_PARAMS` (default `--no-sig0 --no-wallet`, plus the migrate flags in `run_hsd`). The latest code's syslog script reads `SYSLOG_SERVER` and `SYSLOG_STDOUT`; with both unset, logs go to `/opt/data/logs/messages` (`data/handshake-full-node/logs/messages` on the host).
+- `HSD_LOG_LEVEL` (default `info`) and `HSD_ADDITIONAL_PARAMS` (default `--no-sig0 --no-wallet`, plus the migrate flags in `run_hsd`). The handshake-full-node syslog script reads `SYSLOG_SERVER` and `SYSLOG_STDOUT`; with both unset, logs go to `/opt/data/logs/messages` (`data/handshake-full-node/logs/messages` on the host).
 - `DOH_SESSIONS` (dnsflsk worker count)
 - `DNSDIST_STATS_KEY` and `DNSDIST_STATS_ACL` — set both to open dnsdist metrics on port 8083. This file does not choose a password. `ETH_MASTERS` is not set.
 
