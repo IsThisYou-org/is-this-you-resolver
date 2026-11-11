@@ -37,7 +37,7 @@ The layout used here is the one described for this stack, and it matches the scr
 
 Git `bin/remake_conf` also accepts `X`, `W`, `R`, and a `|` upstream form. The published image's copy of that script accepts `X`, `P`, and `R` (the `W` line is in git commit `260a788`, after the image was built). The file shipped here uses only the `P` line specified for this stack. The cert name `isthisyou.org` is the cert name from those example lines. No repository records the production PEM or a different basename. The operator supplies `data/easy-nginx/pems/isthisyou.org.pem`.
 
-No certificate material is in any of the four repositories, or in this one. Operators place `data/easy-nginx/pems/<domain>.pem` on the host. `.gitignore` ignores `data/easy-nginx/pems/*.pem` and `*.pem` anywhere in the tree. The committed `pems` directory contains only `.gitkeep`. The proxy map `data/easy-nginx/etc/nginx.input` is not secret and is committed.
+No certificate material is in any of the four repositories, or in this one. Operators place `data/easy-nginx/pems/<domain>.pem` on the host. `.gitignore` ignores `data/easy-nginx/pems/*.pem` and `*.pem` anywhere in the tree. The committed `pems` directory contains only `.gitkeep`. The proxy map `data/easy-nginx/etc/nginx.input` is not secret and is committed. Its destinations are the fixed Compose addresses `http://172.30.53.30/` (dnsflsk, image `flask-doh`, `api.isthisyou.org`) and `http://172.30.53.20/` (`handshake-volume-resolver`, `doh.isthisyou.org`). Those addresses are set in `compose.yaml` and the map must stay in step with them.
 
 ## handshake-full-node
 

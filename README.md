@@ -126,11 +126,11 @@ P <cert-name> <destination-URL> <host-name> [host-name...]
 `P` means proxy. The shipped lines are:
 
 ```text
-P isthisyou.org http://dnsflsk/ api.isthisyou.org
-P isthisyou.org http://handshake-volume-resolver/ doh.isthisyou.org
+P isthisyou.org http://172.30.53.30/ api.isthisyou.org
+P isthisyou.org http://172.30.53.20/ doh.isthisyou.org
 ```
 
-The destinations are the Compose service names. Both containers listen on port 80, which is what an `http://` URL with no port uses. The cert name `isthisyou.org` is the basename of the PEM.
+`172.30.53.30` is dnsflsk (the `flask-doh` image) and `172.30.53.20` is `handshake-volume-resolver`. Both listen on port 80, which is what an `http://` URL with no port uses. These addresses are the static addresses in `compose.yaml`. If those addresses change, change these lines to match. The cert name `isthisyou.org` is the basename of the PEM.
 
 ### PEM
 

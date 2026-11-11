@@ -1,2 +1,2 @@
-P isthisyou.org http://dnsflsk/ api.isthisyou.org
-P isthisyou.org http://handshake-volume-resolver/ doh.isthisyou.org
+P isthisyou.org http://172.30.53.30/ api.isthisyou.org
+P isthisyou.org http://172.30.53.20/ doh.isthisyou.org
