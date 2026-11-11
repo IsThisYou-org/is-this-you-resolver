@@ -19,7 +19,7 @@ These values are not in a Compose example upstream. They are the published run f
 - Service names match the repository names. The diagram label `dns-flask` is this `dnsflsk` repository. Its image name is `flask-doh`.
 - `--read-only` is set on every service because every `dkrun` sets it.
 - `handshake-volume-resolver` memory limit `1g` and `nofile` 15000 match its `dkrun`.
-- Volume path `/opt/data` matches `dkrun` for easy-nginx and handshake-volume-resolver. The full-node mount is the path in the Hub image, which differs from that repository's `dkrun`. See below.
+- Volume path `/opt/data` matches `dkrun` for easy-nginx and handshake-volume-resolver. The full node uses the same container path: the current image keeps the chain in `/opt/data/hsd`.
 - `HSD_MASTERS` and `DOH_SERVERS` are the README variables those two images use to find a neighbour.
 
 ## easy-nginx layout
@@ -39,29 +39,17 @@ Git `bin/remake_conf` also accepts `X`, `W`, `R`, and a `|` upstream form. The p
 
 No certificate material is in any of the four repositories.
 
-## GitHub tree and the Docker Hub image
+## handshake-full-node
 
-`jamesstevens/handshake-full-node:latest` was pulled and inspected. Its `/usr/local/etc/build.txt` says `20251106.1538`. That image does not match commit `ec445d7` on GitHub:
+The current image is Docker Hub `jamesstevens/handshake-full-node:latest` (build `20251106.1538` in `/usr/local/etc/build.txt`). That is the build the owner runs. The chain is stored in `/opt/data/hsd`.
 
-| | GitHub `bin/run_hsd` and README | Image `latest` (`/usr/local/bin/run_hsd`, `/etc/inittab`) |
-| --- | --- | --- |
-| Chain directory | `/opt/hsd-data` (`--prefix=/opt/hsd-data/`) | `/opt/data/hsd` |
-| Auth ROOT port | 153 (`--ns-port 153`) | hsd default 5349 (no `--ns-port` in the script) |
-| Resolver port | 253 (`--rs-port 253`) | hsd default 5350 |
-| Port 53 | not used | `rd_bit_proxy -s 0.0.0.0:53 -a 127.0.0.1 -r 127.0.0.1` |
-| Syslog | `HSD_SYSLOG_SERVER`, stdout if unset | `SYSLOG_SERVER` / `SYSLOG_STDOUT`, else `/opt/data/logs/messages` |
+`rd_bit_proxy` listens on port 53, so both hsd services are reached through that one port. hsd itself still uses two ports: authoritative, root zone only, on 5349, and recursive on 5350. The preferred split is the RD bit. The image's inittab runs `rd_bit_proxy -s 0.0.0.0:53 -a 127.0.0.1 -r 127.0.0.1`. With no port on `-a` or `-r`, the binary uses 5349 and 5350.
 
-`rd_bit_proxy` in the image is the RD splitter. With no port on `-a` it uses 5349, and with no port on `-r` it uses 5350 (the two `movw` immediates `0x14e5` and `0x14e6` in the binary). Authoritative queries therefore reach hsd's nameserver. Recursive queries reach hsd's resolver. Callers see port 53.
+Compose mounts the named volume at `/opt/data` and sets `HSD_MASTERS=172.30.53.10` with no port. root_proxy then uses port 53.
 
-The volume-resolver README says to map authoritative port 5349 onto port 53 when the Handshake node is not this container. This image already does that, inside the container.
+The GitHub tree at `ec445d7` is behind this image. That tree listens on 153 and 253 and stores data in `/opt/hsd-data`.
 
-Compose follows the image, because that is what `docker compose up` runs:
-
-- named volume `hsd-data` mounted at `/opt/data`
-- `HSD_MASTERS=172.30.53.10` with no port, so root_proxy uses port 53
-- ports 153 and 253 are not published
-
-`HSD_LOG_LEVEL` and `HSD_ADDITIONAL_PARAMS` are still read by the image's `run_hsd`, with the same defaults as the README (`info`, `--no-sig0 --no-wallet`). `HSD_SYSLOG_SERVER` is the name in the GitHub README. The image's `start_syslogd` reads `SYSLOG_SERVER` and `SYSLOG_STDOUT` instead. Those two names are not in the README, so Compose does not set them.
+The image's `run_hsd` reads `HSD_LOG_LEVEL` (default `info`) and `HSD_ADDITIONAL_PARAMS` (default `--no-sig0 --no-wallet`). Its `start_syslogd` reads `SYSLOG_SERVER` and `SYSLOG_STDOUT`. With both unset, syslog goes to `/opt/data/logs/messages`.
 
 ## Addresses
 

@@ -27,8 +27,7 @@ services:
     networks:
       resolver:
         ipv4_address: 172.30.53.10
-    # Hub image build 20251106.1538 writes the chain to /opt/data/hsd
-    # and syslog to /opt/data/logs. See NOTES.md.
+    # Current image: chain in /opt/data/hsd, syslog in /opt/data/logs.
     volumes:
       - hsd-data:/opt/data
 
@@ -48,8 +47,7 @@ services:
       resolver:
         ipv4_address: 172.30.53.20
     environment:
-      # rd_bit_proxy in the Hub image listens on port 53 and sends
-      # authoritative queries to hsd's default port 5349.
+      # No port: root_proxy uses 53, where rd_bit_proxy listens.
       HSD_MASTERS: "172.30.53.10"
     volumes:
       - ./handshake-volume-resolver/data:/opt/data

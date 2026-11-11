@@ -148,7 +148,7 @@ The easy-nginx README does not describe this layout. The paths match its `dkrun`
 | `./handshake-volume-resolver/data` | `/opt/data` | Resolver state and syslog. Optional authoritative zones go in `auth_zones/`, one file per zone, file name equal to the zone name. Create that directory only when it contains zone files. An empty directory makes this image try to load a zone named `*`. |
 | `./easy-nginx` | `/opt/data` | easy-nginx scratch space, `etc/nginx.input`, and `pems/`. Profile `tls` only. |
 
-The image creates `/opt/data/hsd` and changes its owner to the `hsd` user. The handshake-full-node README on GitHub describes a different mount, `/opt/hsd-data`, with mode `777`. That path is what the git tree's `bin/run_hsd` uses. The image on Docker Hub (`latest`, build `20251106.1538`) uses `/opt/data/hsd`. This file follows the image.
+The current handshake-full-node image stores the chain in `/opt/data/hsd` and changes that directory's owner to the `hsd` user. `rd_bit_proxy` in the same container listens on port 53. hsd itself still uses a separate authoritative port (root zone only) and a recursive port; the proxy is how both are reached, split on the RD bit. The GitHub tree at `ec445d7` is behind that image.
 
 ## Environment
 
@@ -156,14 +156,14 @@ Set here, so the services can reach each other:
 
 | Variable | Service | Value | Why |
 | --- | --- | --- | --- |
-| `HSD_MASTERS` | `handshake-volume-resolver` | `172.30.53.10` | Required list of Handshake nodes. `172.30.53.10` is `handshake-full-node`. The address has no port, so root_proxy uses port 53. That is where the image's `rd_bit_proxy` listens. |
+| `HSD_MASTERS` | `handshake-volume-resolver` | `172.30.53.10` | Required list of Handshake nodes. `172.30.53.10` is `handshake-full-node`. No port is set, so root_proxy uses port 53, where `rd_bit_proxy` listens. |
 | `DOH_SERVERS` | `dnsflsk` | `172.30.53.20` | Resolver address. `172.30.53.20` is `handshake-volume-resolver`, whose dnsdist listens on port 53. Without this, dnsflsk uses Google's resolvers. |
 
 The network `resolver` is `172.30.53.0/24`. That subnet sits inside the default BIND allow list in the image (`172.16.0.0/12`, from `bin/start_named`). root_proxy accepts numeric addresses only. The component repositories do not define a Docker network; the subnet is recorded in NOTES.md.
 
 Left at the image defaults, and documented by those READMEs:
 
-- `HSD_LOG_LEVEL` (default `info`), `HSD_SYSLOG_SERVER`, `HSD_ADDITIONAL_PARAMS` (default `--no-sig0 --no-wallet`, plus the migrate flags in `bin/run_hsd`)
+- `HSD_LOG_LEVEL` (default `info`) and `HSD_ADDITIONAL_PARAMS` (default `--no-sig0 --no-wallet`, plus the migrate flags in `run_hsd`). The image's syslog script reads `SYSLOG_SERVER` and `SYSLOG_STDOUT`; with both unset, logs go to `/opt/data/logs/messages` on the full-node volume.
 - `DOH_SESSIONS` (dnsflsk worker count)
 - `DNSDIST_STATS_KEY` and `DNSDIST_STATS_ACL` — set both to open dnsdist metrics on port 8083. This file does not choose a password. `ETH_MASTERS` is not set.
 
