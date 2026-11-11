@@ -25,9 +25,9 @@ services:
       resolver:
         ipv4_address: 172.30.53.10
     # Chain in /opt/data/hsd, syslog in /opt/data/logs.
-    # DATA moves the whole host tree, including this directory.
+    # DATA_DIR moves the whole host tree, including this directory.
     volumes:
-      - ${DATA:-./data}/handshake-full-node:/opt/data
+      - ${DATA_DIR:-./data}/handshake-full-node:/opt/data
 
   handshake-volume-resolver:
     image: jamesstevens/handshake-volume-resolver
@@ -48,7 +48,7 @@ services:
       # No port: root_proxy uses 53, where rd_bit_proxy listens.
       HSD_MASTERS: "172.30.53.10"
     volumes:
-      - ${DATA:-./data}/handshake-volume-resolver:/opt/data
+      - ${DATA_DIR:-./data}/handshake-volume-resolver:/opt/data
     ports:
       - "53:53/tcp"
       - "53:53/udp"
@@ -85,4 +85,4 @@ services:
       - "80:80"
       - "443:443"
     volumes:
-      - ${DATA:-./data}/easy-nginx:/opt/data
+      - ${DATA_DIR:-./data}/easy-nginx:/opt/data
