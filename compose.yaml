@@ -1,0 +1,92 @@
+# Is This You resolver and DoH stack.
+#
+# Images, ports, volume paths, and environment variables come from the
+# component repositories (Dockerfiles, dkrun, and READMEs). Addresses on
+# the resolver network are integration glue: see README.md and NOTES.md.
+# The tls profile is optional. Leave it off when the host already
+# terminates TLS.
+
+name: is-this-you-resolver
+
+networks:
+  resolver:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.30.53.0/24
+
+volumes:
+  hsd-data:
+
+services:
+  handshake-full-node:
+    image: jamesstevens/handshake-full-node
+    container_name: handshake-full-node
+    read_only: true
+    restart: unless-stopped
+    networks:
+      resolver:
+        ipv4_address: 172.30.53.10
+    # Hub image build 20251106.1538 writes the chain to /opt/data/hsd
+    # and syslog to /opt/data/logs. See NOTES.md.
+    volumes:
+      - hsd-data:/opt/data
+
+  handshake-volume-resolver:
+    image: jamesstevens/handshake-volume-resolver
+    container_name: handshake-volume-resolver
+    read_only: true
+    restart: unless-stopped
+    mem_limit: 1g
+    ulimits:
+      nofile:
+        soft: 15000
+        hard: 15000
+    depends_on:
+      - handshake-full-node
+    networks:
+      resolver:
+        ipv4_address: 172.30.53.20
+    environment:
+      # rd_bit_proxy in the Hub image listens on port 53 and sends
+      # authoritative queries to hsd's default port 5349.
+      HSD_MASTERS: "172.30.53.10"
+    volumes:
+      - ./handshake-volume-resolver/data:/opt/data
+    ports:
+      - "53:53/tcp"
+      - "53:53/udp"
+      - "127.0.0.1:9119:9119"
+      - "127.0.0.1:8405:8405"
+      - "127.0.0.1:8083:8083"
+
+  dnsflsk:
+    image: jamesstevens/flask-doh
+    container_name: dnsflsk
+    read_only: true
+    restart: unless-stopped
+    depends_on:
+      - handshake-volume-resolver
+    networks:
+      resolver:
+        ipv4_address: 172.30.53.30
+    environment:
+      DOH_SERVERS: "172.30.53.20"
+
+  easy-nginx:
+    image: jamesstevens/easy-nginx
+    container_name: easy-nginx
+    profiles: ["tls"]
+    read_only: true
+    restart: unless-stopped
+    depends_on:
+      - dnsflsk
+      - handshake-volume-resolver
+    networks:
+      resolver:
+        ipv4_address: 172.30.53.40
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./easy-nginx:/opt/data

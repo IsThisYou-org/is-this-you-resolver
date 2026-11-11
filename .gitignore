@@ -1,0 +1,7 @@
+# Operator TLS material. The cert-name field in etc/nginx.input is the basename.
+easy-nginx/pems/*.pem
+
+# Scratch directories the containers create under the host mounts.
+easy-nginx/logs/
+easy-nginx/htdocs/
+handshake-volume-resolver/data/logs/
