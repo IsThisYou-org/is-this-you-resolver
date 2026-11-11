@@ -37,7 +37,7 @@ The layout used here is the one described for this stack, and it matches the scr
 
 Git `bin/remake_conf` also accepts `X`, `W`, `R`, and a `|` upstream form. The published image's copy of that script accepts `X`, `P`, and `R` (the `W` line is in git commit `260a788`, after the image was built). The file shipped here uses only the `P` line specified for this stack. The cert name `isthisyou.org` is the cert name from those example lines. No repository records the production PEM or a different basename. The operator supplies `easy-nginx/pems/isthisyou.org.pem`.
 
-No certificate material is in any of the four repositories.
+No certificate material is in any of the four repositories, or in this one. Operators place `easy-nginx/pems/<domain>.pem` on the host. `.gitignore` ignores `easy-nginx/pems/*.pem` and `*.pem` anywhere in the tree. The committed `pems` directory contains only `.gitkeep`.
 
 ## handshake-full-node
 
@@ -45,7 +45,7 @@ The latest code is branch `dev` at `0a4ad9f` (6 November 2025). `bin/run_hsd` st
 
 `rd_bit_proxy` listens on port 53, so both hsd services are reached through that one port. hsd itself still uses two ports: authoritative, root zone only, on 5349, and recursive on 5350. The preferred split is the RD bit. `inittab` runs `rd_bit_proxy -s 0.0.0.0:53 -a 127.0.0.1 -r 127.0.0.1`. With no port on `-a` or `-r`, the binary uses 5349 and 5350.
 
-Compose mounts the named volume at `/opt/data`, so the chain is at `/opt/data/hsd`, and sets `HSD_MASTERS=172.30.53.10` with no port. root_proxy then uses port 53.
+Compose bind-mounts a host directory at `/opt/data`, so the chain is at `/opt/data/hsd`. The default host path is `./handshake-full-node/data`. Set `HSD_DATA` to another absolute path to place that directory on a larger disk. `HSD_DATA` is Compose interpolation, not a variable inside the container. `HSD_MASTERS` is `172.30.53.10` with no port, so root_proxy uses port 53.
 
 Default branch `master` at `ec445d7` is an older tree. It listens on 153 and 253 and stores data in `/opt/hsd-data`.
 

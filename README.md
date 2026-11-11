@@ -29,7 +29,7 @@ root_proxy asks the BIND `root` view first. When that answer is NXDOMAIN, it sen
 ## Requirements
 
 - Docker Engine with Compose v2
-- About 45 to 50 GB free for the Handshake chain, on the Docker volume `hsd-data`. The other services use very little disk
+- About 45 to 50 GB free for the Handshake chain, on the filesystem that holds the full-node data directory (below). The other services use very little disk
 - UDP and TCP port 53 free on the host
 - For the `tls` profile, TCP ports 80 and 443, and a PEM (below)
 
@@ -53,7 +53,13 @@ To stop, without deleting the chain data:
 docker compose down
 ```
 
-`docker compose down -v` also deletes the `hsd-data` volume. The node then has to fetch the chain again.
+That leaves the host directory in place. Deleting that directory makes the node fetch the chain again.
+
+The default directory is `./handshake-full-node/data`. To put the chain on another disk, set `HSD_DATA` to an absolute host path. Compose reads it when it interpolates the bind mount. It is not an environment variable inside the container.
+
+```bash
+HSD_DATA=/srv/handshake docker compose up -d
+```
 
 Logs:
 
@@ -128,6 +134,8 @@ easy-nginx/pems/isthisyou.org.pem
 
 Inside the container that path is `/opt/data/pems/isthisyou.org.pem`. The file holds the private key and the certificate together. easy-nginx uses that same file as both the certificate and the key. It must be valid for `api.isthisyou.org` and `doh.isthisyou.org`.
 
+Supply `easy-nginx/pems/<domain>.pem` on the host. The cert-name field is `<domain>`. Do not commit these files. Each one contains the private key. This repository ignores `easy-nginx/pems/*.pem` and any `*.pem` elsewhere. The `pems` directory in git contains only `.gitkeep`.
+
 Place the file before the first start of the profile. If you add it later:
 
 ```bash
@@ -144,7 +152,7 @@ The easy-nginx README does not describe this layout. The paths match its `dkrun`
 
 | Mount | Container path | Purpose |
 | --- | --- | --- |
-| Docker volume `hsd-data` | `/opt/data` | Handshake chain data, in `hsd/` on that volume. Allow 45 to 50 GB. The image also writes `logs/` here. |
+| `./handshake-full-node/data`, or `HSD_DATA` | `/opt/data` | Handshake chain data, in `hsd/` on that host directory. Allow 45 to 50 GB. The container also writes `logs/` here. |
 | `./handshake-volume-resolver/data` | `/opt/data` | Resolver state and syslog. Optional authoritative zones go in `auth_zones/`, one file per zone, file name equal to the zone name. Create that directory only when it contains zone files. An empty directory makes this image try to load a zone named `*`. |
 | `./easy-nginx` | `/opt/data` | easy-nginx scratch space, `etc/nginx.input`, and `pems/`. Profile `tls` only. |
 
@@ -163,7 +171,7 @@ The network `resolver` is `172.30.53.0/24`. That subnet sits inside the default 
 
 Left at the image defaults, and documented by those READMEs:
 
-- `HSD_LOG_LEVEL` (default `info`) and `HSD_ADDITIONAL_PARAMS` (default `--no-sig0 --no-wallet`, plus the migrate flags in `run_hsd`). The latest code's syslog script reads `SYSLOG_SERVER` and `SYSLOG_STDOUT`; with both unset, logs go to `/opt/data/logs/messages` on the full-node volume.
+- `HSD_LOG_LEVEL` (default `info`) and `HSD_ADDITIONAL_PARAMS` (default `--no-sig0 --no-wallet`, plus the migrate flags in `run_hsd`). The latest code's syslog script reads `SYSLOG_SERVER` and `SYSLOG_STDOUT`; with both unset, logs go to `/opt/data/logs/messages` in the full-node data directory.
 - `DOH_SESSIONS` (dnsflsk worker count)
 - `DNSDIST_STATS_KEY` and `DNSDIST_STATS_ACL` — set both to open dnsdist metrics on port 8083. This file does not choose a password. `ETH_MASTERS` is not set.
 

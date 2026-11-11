@@ -15,9 +15,6 @@ networks:
       config:
         - subnet: 172.30.53.0/24
 
-volumes:
-  hsd-data:
-
 services:
   handshake-full-node:
     image: jamesstevens/handshake-full-node
@@ -27,9 +24,10 @@ services:
     networks:
       resolver:
         ipv4_address: 172.30.53.10
-    # Latest handshake-full-node code: chain in /opt/data/hsd, syslog in /opt/data/logs.
+    # Latest code: chain in /opt/data/hsd, syslog in /opt/data/logs.
+    # HSD_DATA overrides the host directory without editing this file.
     volumes:
-      - hsd-data:/opt/data
+      - ${HSD_DATA:-./handshake-full-node/data}:/opt/data
 
   handshake-volume-resolver:
     image: jamesstevens/handshake-volume-resolver

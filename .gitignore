@@ -1,7 +1,12 @@
-# Operator TLS material. The cert-name field in etc/nginx.input is the basename.
+# PEM files hold the private key and the certificate. Never commit them.
+*.pem
 easy-nginx/pems/*.pem
 
 # Scratch directories the containers create under the host mounts.
 easy-nginx/logs/
 easy-nginx/htdocs/
 handshake-volume-resolver/data/logs/
+
+# Handshake chain and syslog under the default full-node bind mount.
+handshake-full-node/data/*
+!handshake-full-node/data/.gitkeep
