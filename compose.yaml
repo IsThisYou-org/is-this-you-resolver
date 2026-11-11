@@ -27,7 +27,7 @@ services:
     networks:
       resolver:
         ipv4_address: 172.30.53.10
-    # Current image: chain in /opt/data/hsd, syslog in /opt/data/logs.
+    # Latest handshake-full-node code: chain in /opt/data/hsd, syslog in /opt/data/logs.
     volumes:
       - hsd-data:/opt/data
 

@@ -7,7 +7,7 @@ Inspected on 11 November 2026, default-branch tips:
 | [james-stevens/easy-nginx](https://github.com/james-stevens/easy-nginx) | `260a788c4658bd788b664170a2fab9532801961d` | `README.md`, `Dockerfile`, `dkrun`, `dkmk`, `list`, `push_to_docker`, `nginx/nginx.conf`, `nginx/plain.conf`, `nginx/nolog.conf`, `bin/start_nginx`, `bin/set_conf`, `bin/remake_conf`, `bin/update_pems`, `bin/start_syslogd` |
 | [james-stevens/dnsflsk](https://github.com/james-stevens/dnsflsk) | `b7bb1c538af3f0650b1b711cf05802f845ce6eda` | `README.md`, `Dockerfile`, `dkrun`, `dkmk`, `list`, `push_to_docker`, `etc/nginx.conf`, `etc/inittab`, `bin/start_wsgi`, `python/dnsflsk.py`, `python/resolv.py` |
 | [james-stevens/handshake-volume-resolver](https://github.com/james-stevens/handshake-volume-resolver) | `7f10baaf875a5b796b1bba423568a0c2880c1cc6` | `README.md`, `Dockerfile`, `dkrun`, `dkmk`, `list`, `inittab`, `etc/named.conf`, `etc/haproxy.cfg`, `etc/with_eth.inc`, `bin/start_named`, `bin/start_dnsdist`, `bin/start_root_proxy`, `bin/start_syslogd`, `bin/start_exporter`, `root_proxy/root_proxy.c`, `root_proxy/liball.c` |
-| [james-stevens/handshake-full-node](https://github.com/james-stevens/handshake-full-node) | `ec445d7c35272041cec29c3904c36f7454201ac1` | `README.md`, `Dockerfile`, `dkrun`, `dkmk`, `list`, `bin/run_hsd`, `bin/start_syslogd`, and `hsd-8.0.0/hsd/lib/protocol/networks.js` for the default peer and DNS ports |
+| [james-stevens/handshake-full-node](https://github.com/james-stevens/handshake-full-node) | `dev` `0a4ad9f438606ab4a0858c01fed0b2e963395577` (6 November 2025). Default branch `master` is the older `ec445d7c35272041cec29c3904c36f7454201ac1` | `README.md`, `Dockerfile`, `dkrun`, `bin/run_hsd`, `bin/start_syslogd`, `inittab`, and `hsd-8.0.0/hsd/lib/protocol/networks.js` for the default peer port |
 
 Docker Hub confirmed the four image names this file uses. None of the repositories contains a Compose file. There is no published image tag that this repository can pin: `push_to_docker` tags `jamesstevens/<name>` and a date tag.
 
@@ -19,7 +19,7 @@ These values are not in a Compose example upstream. They are the published run f
 - Service names match the repository names. The diagram label `dns-flask` is this `dnsflsk` repository. Its image name is `flask-doh`.
 - `--read-only` is set on every service because every `dkrun` sets it.
 - `handshake-volume-resolver` memory limit `1g` and `nofile` 15000 match its `dkrun`.
-- Volume path `/opt/data` matches `dkrun` for easy-nginx and handshake-volume-resolver. The full node uses the same container path: the current image keeps the chain in `/opt/data/hsd`.
+- Volume path `/opt/data` matches `dkrun` for easy-nginx, handshake-volume-resolver, and the latest handshake-full-node. That full-node code keeps the chain in `/opt/data/hsd`.
 - `HSD_MASTERS` and `DOH_SERVERS` are the README variables those two images use to find a neighbour.
 
 ## easy-nginx layout
@@ -41,19 +41,19 @@ No certificate material is in any of the four repositories.
 
 ## handshake-full-node
 
-The current image is Docker Hub `jamesstevens/handshake-full-node:latest` (build `20251106.1538` in `/usr/local/etc/build.txt`). That is the build the owner runs. The chain is stored in `/opt/data/hsd`.
+The latest code is branch `dev` at `0a4ad9f` (6 November 2025). `bin/run_hsd` stores the chain in `/opt/data/hsd` and changes that directory's owner to the `hsd` user. `dkrun` mounts a host directory at `/opt/data`. Docker Hub `latest` (build `20251106.1538`) is this code.
 
-`rd_bit_proxy` listens on port 53, so both hsd services are reached through that one port. hsd itself still uses two ports: authoritative, root zone only, on 5349, and recursive on 5350. The preferred split is the RD bit. The image's inittab runs `rd_bit_proxy -s 0.0.0.0:53 -a 127.0.0.1 -r 127.0.0.1`. With no port on `-a` or `-r`, the binary uses 5349 and 5350.
+`rd_bit_proxy` listens on port 53, so both hsd services are reached through that one port. hsd itself still uses two ports: authoritative, root zone only, on 5349, and recursive on 5350. The preferred split is the RD bit. `inittab` runs `rd_bit_proxy -s 0.0.0.0:53 -a 127.0.0.1 -r 127.0.0.1`. With no port on `-a` or `-r`, the binary uses 5349 and 5350.
 
-Compose mounts the named volume at `/opt/data` and sets `HSD_MASTERS=172.30.53.10` with no port. root_proxy then uses port 53.
+Compose mounts the named volume at `/opt/data`, so the chain is at `/opt/data/hsd`, and sets `HSD_MASTERS=172.30.53.10` with no port. root_proxy then uses port 53.
 
-The GitHub tree at `ec445d7` is behind this image. That tree listens on 153 and 253 and stores data in `/opt/hsd-data`.
+Default branch `master` at `ec445d7` is an older tree. It listens on 153 and 253 and stores data in `/opt/hsd-data`.
 
-The image's `run_hsd` reads `HSD_LOG_LEVEL` (default `info`) and `HSD_ADDITIONAL_PARAMS` (default `--no-sig0 --no-wallet`). Its `start_syslogd` reads `SYSLOG_SERVER` and `SYSLOG_STDOUT`. With both unset, syslog goes to `/opt/data/logs/messages`.
+`run_hsd` reads `HSD_LOG_LEVEL` (default `info`) and `HSD_ADDITIONAL_PARAMS` (default `--no-sig0 --no-wallet`). `start_syslogd` reads `SYSLOG_SERVER` and `SYSLOG_STDOUT`, which the latest README also documents. With both unset, syslog goes to `/opt/data/logs/messages`.
 
 ## Addresses
 
-`HSD_MASTERS` is documented as a semi-colon-separated list of Handshake nodes. `root_proxy` parses each entry with `decode_net_addr` (`root_proxy/liball.c`), which accepts an IPv4 address and an optional `:port`, and rejects host names. With no port, `root_proxy.c` uses port 53. That matches the image above.
+`HSD_MASTERS` is documented as a semi-colon-separated list of Handshake nodes. `root_proxy` parses each entry with `decode_net_addr` (`root_proxy/liball.c`), which accepts an IPv4 address and an optional `:port`, and rejects host names. With no port, `root_proxy.c` uses port 53, which is where `rd_bit_proxy` listens.
 
 `DOH_SERVERS` is documented as a comma-separated list of IP addresses. `172.30.53.20` is the resolver container, where dnsdist calls `addLocal` on port 53 (`bin/start_dnsdist`).
 
