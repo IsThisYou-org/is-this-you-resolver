@@ -53,7 +53,7 @@ To stop, without deleting the chain data:
 docker compose down
 ```
 
-That leaves the host directories in place. Deleting `data/handshake-full-node` (or the same directory under `DATA_DIR`) makes the node fetch the chain again.
+That leaves the host directories in place. Deleting `data/handshake-full-node` (or `$DATA/handshake-full-node`) makes the node fetch the chain again.
 
 Host state for every container that needs a disk lives under one directory, `./data` by default:
 
@@ -63,11 +63,13 @@ Host state for every container that needs a disk lives under one directory, `./d
 | `data/handshake-volume-resolver` | `handshake-volume-resolver` | `/opt/data` |
 | `data/easy-nginx` | `easy-nginx` | `/opt/data` |
 
-To put that whole tree on another disk, set `DATA_DIR` to an absolute host path. Compose reads it when it interpolates the bind mounts. It is not an environment variable inside a container. Copy the committed `data/` tree to the new root first, so `easy-nginx/etc/nginx.input` is still present, then add your PEMs there.
+To put that whole tree on another disk, set `DATA` to an absolute host path. Compose reads it when it interpolates the bind mounts (`${DATA:-./data}/...`). It is not an environment variable inside a container.
 
 ```bash
-DATA_DIR=/srv/isthisyou docker compose up -d
+DATA=/var/local/resolve docker compose up -d
 ```
+
+The directory at `DATA` must use the same layout: `handshake-full-node/`, `handshake-volume-resolver/`, and `easy-nginx/`. That includes `easy-nginx/etc/nginx.input`. When you use the `tls` profile, also put the PEM files in `easy-nginx/pems/`. Copy the committed `data/` tree to the new root first, then add the PEMs. Do not commit the PEMs.
 
 Logs:
 
@@ -158,7 +160,7 @@ The easy-nginx README does not describe this layout. The paths match its `dkrun`
 
 ## Volumes
 
-| Mount under `./data` (or `DATA_DIR`) | Container path | Purpose |
+| Mount under `./data` (or `$DATA`) | Container path | Purpose |
 | --- | --- | --- |
 | `handshake-full-node/` | `/opt/data` | Handshake chain data, in `hsd/` inside that directory. Allow 45 to 50 GB. The container also writes `logs/` here. |
 | `handshake-volume-resolver/` | `/opt/data` | Resolver state and syslog. Optional authoritative zones go in `auth_zones/`, one file per zone, file name equal to the zone name. Create that directory only when it contains zone files. An empty directory makes this image try to load a zone named `*`. |
