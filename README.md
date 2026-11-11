@@ -100,12 +100,12 @@ dnsflsk also answers `/dns/api/v1.0/resolv` and `/resolv`, as described in its o
 
 ## TLS profile
 
-Enable easy-nginx only when this stack should terminate TLS. When the host already terminates TLS, leave the profile off and send HTTP to:
+Enable easy-nginx only when this stack should terminate TLS on the host. A cloud-provider TLS shedder, or any other proxy on the instance, uses the plain HTTP ports that are published on every `docker compose up`, whether or not this profile is on:
 
-- `dnsflsk` port 80 for `api.isthisyou.org`
-- `handshake-volume-resolver` port 80 for `doh.isthisyou.org`
+- host port 8080 → dnsflsk (`flask-doh`) port 80, the JSON API
+- host port 8081 → `handshake-volume-resolver` port 80, binary DoH
 
-Those two HTTP ports are on the Compose network `resolver`. They are not published on the host, so they do not clash with easy-nginx. Attach a host proxy to that network, or publish the ports in a local override.
+Both are plain HTTP. Limit them to the external shedder, with a security group or the equivalent.
 
 Start TLS with this stack:
 
@@ -188,10 +188,14 @@ Left at the image defaults, and documented by those READMEs:
 | Published | Goes to |
 | --- | --- |
 | `53/tcp`, `53/udp` | dnsdist in `handshake-volume-resolver` |
+| `8080` | dnsflsk (`flask-doh`) port 80, JSON API. Plain HTTP. Published on every `docker compose up`. |
+| `8081` | `handshake-volume-resolver` port 80, binary DoH. Plain HTTP. Published on every `docker compose up`. |
 | `127.0.0.1:9119` | BIND metrics |
 | `127.0.0.1:8405` | HAProxy metrics |
 | `127.0.0.1:8083` | dnsdist metrics, only after the two stats variables above are set |
 | `80`, `443` | easy-nginx, profile `tls` only |
+
+Host ports 8080 and 8081 stay published when the `tls` profile is on. easy-nginx still uses host ports 80 and 443. Limit 8080 and 8081 to the external TLS shedder, with a security group or the equivalent.
 
 Containers use `restart: unless-stopped`. The component `dkrun` scripts are interactive and do not set a restart policy.
 

@@ -52,6 +52,7 @@ services:
     ports:
       - "53:53/tcp"
       - "53:53/udp"
+      - "8081:80"
       - "127.0.0.1:9119:9119"
       - "127.0.0.1:8405:8405"
       - "127.0.0.1:8083:8083"
@@ -68,6 +69,8 @@ services:
         ipv4_address: 172.30.53.30
     environment:
       DOH_SERVERS: "172.30.53.20"
+    ports:
+      - "8080:80"
 
   easy-nginx:
     image: jamesstevens/easy-nginx
