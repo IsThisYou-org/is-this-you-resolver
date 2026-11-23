@@ -6,6 +6,7 @@ data/easy-nginx/pems/*.pem
 data/easy-nginx/logs/
 data/easy-nginx/htdocs/
 data/handshake-volume-resolver/logs/
+data/ethereum-dns-gateway/logs/
 
 # Handshake chain and syslog under the full-node bind mount.
 data/handshake-full-node/*
