@@ -29,6 +29,23 @@ services:
     volumes:
       - ${DATA_DIR:-./data}/handshake-full-node:/opt/data
 
+  ethereum-dns-gateway:
+    image: jamesstevens/ethereum-dns-gateway
+    container_name: ethereum-dns-gateway
+    read_only: true
+    restart: unless-stopped
+    networks:
+      resolver:
+        ipv4_address: 172.30.53.50
+    # UDP/53 on this network only. Logs match the other services.
+    environment:
+      # Empty when the host does not set them.
+      # ETH_RPC_URL wins. Then ALCHEMY_API_CODE. Else the public RPC.
+      ETH_RPC_URL: "${ETH_RPC_URL:-}"
+      ALCHEMY_API_CODE: "${ALCHEMY_API_CODE:-}"
+    volumes:
+      - ${DATA_DIR:-./data}/ethereum-dns-gateway:/opt/data
+
   handshake-volume-resolver:
     image: jamesstevens/handshake-volume-resolver
     container_name: handshake-volume-resolver
@@ -41,12 +58,15 @@ services:
         hard: 15000
     depends_on:
       - handshake-full-node
+      - ethereum-dns-gateway
     networks:
       resolver:
         ipv4_address: 172.30.53.20
     environment:
       # No port: root_proxy uses 53, where rd_bit_proxy listens.
       HSD_MASTERS: "172.30.53.10"
+      # No port: the gateway listens on UDP 53. IP list, semicolon separated.
+      ETH_MASTERS: "172.30.53.50"
     volumes:
       - ${DATA_DIR:-./data}/handshake-volume-resolver:/opt/data
     ports:

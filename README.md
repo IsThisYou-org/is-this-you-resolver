@@ -5,13 +5,14 @@ Docker Compose for the Is This You resolver and DNS-over-HTTPS stack. It runs th
 | Service | Image | Role |
 | --- | --- | --- |
 | `handshake-full-node` | `jamesstevens/handshake-full-node` | Handshake full node |
+| `ethereum-dns-gateway` | `jamesstevens/ethereum-dns-gateway` | ENS names, UDP port 53 |
 | `handshake-volume-resolver` | `jamesstevens/handshake-volume-resolver` | dnsdist, HAProxy, root_proxy, and one BIND process with two views |
 | `dnsflsk` | `jamesstevens/flask-doh` | JSON DoH / API |
 | `easy-nginx` (profile `tls`) | `jamesstevens/easy-nginx` | Optional TLS termination |
 
 BIND is not its own container. The views in the image are `recursive` (resolver) and `root` (ICANN root secondary).
 
-The Ethereum / Alchemy path is not part of this stack.
+`.eth` is answered by `ethereum-dns-gateway`. The Hub image must be the Python build from PR #2 (branch `cursor/python-ens-gateway-8047`, commit `55b89a7` or later). This file does not build that image.
 
 The dnsflsk README links the older Hub image `jamesstevens/doh`. This stack uses `jamesstevens/flask-doh`.
 
@@ -28,6 +29,22 @@ dnsdist splits on the RD flag. RD=1 goes to the BIND `recursive` view. RD=0 goes
 
 root_proxy asks the BIND `root` view first. When that answer is NXDOMAIN, it sends the same query to the Handshake full node and returns that answer. An NXDOMAIN for an RD=0 query on the root zone therefore carries the Handshake SOA.
 
+## .eth
+
+Port 53, binary DoH, and the JSON API all arrive at dnsdist.
+
+dnsdist sends RD=1 to the BIND `recursive` view. That view has a static-stub for `eth.` when `ETH_MASTERS` is set. The stub asks `172.30.53.50` on UDP port 53. That address is `ethereum-dns-gateway`.
+
+The gateway treats every name it is asked as an ENS name.
+
+RD=0 does not use the gateway. Those queries go to root_proxy.
+
+The gateway does not listen on TCP. BIND asks it over UDP. If an answer is too big, BIND may retry on TCP, and that retry fails. WALLET, PTR, URI, and TXT stay small, so they stay on UDP.
+
+`ETH_MASTERS` is already in the volume-resolver image. No change to that image is required for `.eth`.
+
+handshake-volume-resolver PR #15 is not on `master` yet (`60ed633` on `dev`). It deletes the `forever` zone from `etc/with_eth.inc`. Until that image is rebuilt and pushed, `ETH_MASTERS` also sends `forever.` to the gateway.
+
 ## Requirements
 
 - Docker Engine with Compose v2
@@ -35,7 +52,7 @@ root_proxy asks the BIND `root` view first. When that answer is NXDOMAIN, it sen
 - UDP and TCP port 53 free on the host
 - For the `tls` profile, TCP ports 80 and 443, and a PEM (below)
 
-The resolver transfers the ICANN root zone from the primaries built into the image, so the host needs outbound DNS to those servers. The full node needs outbound access to the Handshake network. Client networks often block or intercept outbound port 53; HTTPS / DoH is the reliable way to query this service.
+The resolver transfers the ICANN root zone from the primaries built into the image, so the host needs outbound DNS to those servers. The full node needs outbound access to the Handshake network. The gateway needs outbound HTTPS to its Ethereum RPC host. With both RPC variables empty, that host is `ethereum.publicnode.com`. Client networks often block or intercept outbound port 53; HTTPS / DoH is the reliable way to query this service.
 
 ## Run
 
@@ -62,6 +79,7 @@ Host state for every container that needs a disk lives under one directory, `./d
 | Host path | Container | Mounted at |
 | --- | --- | --- |
 | `data/handshake-full-node` | `handshake-full-node` | `/opt/data` (chain in `hsd/`) |
+| `data/ethereum-dns-gateway` | `ethereum-dns-gateway` | `/opt/data` |
 | `data/handshake-volume-resolver` | `handshake-volume-resolver` | `/opt/data` |
 | `data/easy-nginx` | `easy-nginx` | `/opt/data` |
 
@@ -78,13 +96,16 @@ docker compose logs -f handshake-full-node
 docker compose logs -f dnsflsk
 ```
 
-`handshake-volume-resolver` writes syslog to `logs/messages` inside its data directory (on the host: `data/handshake-volume-resolver/logs/messages`). easy-nginx does the same under `data/easy-nginx/logs/`.
+`handshake-volume-resolver` writes syslog to `logs/messages` inside its data directory (on the host: `data/handshake-volume-resolver/logs/messages`). `ethereum-dns-gateway` and easy-nginx do the same under their own `data/` directories. `SYSLOG_STDOUT` is unset on the gateway, so it matches the other services.
 
 A local check of classic DNS, once the root zone is loaded:
 
 ```bash
 dig @127.0.0.1 example.com A
+dig @127.0.0.1 bitsofcode.eth WALLET
 ```
+
+The second check needs the Python gateway image from PR #2, and outbound HTTPS to Ethereum.
 
 A local check of the JSON API, from inside dnsflsk (the image includes `curl`):
 
@@ -163,6 +184,7 @@ The same host directory is scratch space. The container creates directories ther
 | Mount under `./data` (or `DATA_DIR`) | Container path | Purpose |
 | --- | --- | --- |
 | `handshake-full-node/` | `/opt/data` | Handshake chain data, in `hsd/` inside that directory. Allow 45 to 50 GB. The container also writes `logs/` here. |
+| `ethereum-dns-gateway/` | `/opt/data` | Gateway syslog, in `logs/`. |
 | `handshake-volume-resolver/` | `/opt/data` | Resolver state and syslog. Optional authoritative zones go in `auth_zones/`, one file per zone, file name equal to the zone name. handshake-volume-resolver PR #13 (merge `e7ccf5b`, 11 November 2026) fixed `start_named` so an empty `/opt/data/auth_zones` no longer loads a zone named `*`. The fix reaches Docker Hub `latest` only after that image is rebuilt and pushed. Until the published image includes the fix, create `auth_zones` only when it contains zone files. |
 | `easy-nginx/` | `/opt/data` | easy-nginx scratch space, `etc/nginx.input`, and `pems/`. Profile `tls` only. |
 
@@ -175,15 +197,21 @@ Set here, so the services can reach each other:
 | Variable | Service | Value | Why |
 | --- | --- | --- | --- |
 | `HSD_MASTERS` | `handshake-volume-resolver` | `172.30.53.10` | Required list of Handshake nodes. `172.30.53.10` is `handshake-full-node`. No port is set, so root_proxy uses port 53, where `rd_bit_proxy` listens. |
+| `ETH_MASTERS` | `handshake-volume-resolver` | `172.30.53.50` | ENS gateway addresses, separated by `;`. `172.30.53.50` is `ethereum-dns-gateway`. No port is set, so BIND uses UDP port 53. This builds the `eth.` static-stub. |
 | `DOH_SERVERS` | `dnsflsk` | `172.30.53.20` | Resolver address. `172.30.53.20` is `handshake-volume-resolver`, whose dnsdist listens on port 53. Without this, dnsflsk uses Google's resolvers. |
+| `ETH_RPC_URL` | `ethereum-dns-gateway` | empty unless set on the host | Optional JSON-RPC URL. When set, this wins. |
+| `ALCHEMY_API_CODE` | `ethereum-dns-gateway` | empty unless set on the host | Optional Alchemy key. Used when `ETH_RPC_URL` is empty. Calls go to `https://eth-mainnet.g.alchemy.com/v2/<key>`. |
 
-The network `resolver` is `172.30.53.0/24`. root_proxy (`HSD_MASTERS`) accepts numeric IPv4 addresses with an optional `:port` only, not host names. That is why the network uses fixed addresses in this subnet, which also sits inside the image's default BIND allow list (`172.16.0.0/12`). Assigned addresses: `.10` full node, `.20` volume resolver, `.30` dnsflsk, `.40` easy-nginx.
+If `ETH_RPC_URL` and `ALCHEMY_API_CODE` are both empty, the gateway uses `https://ethereum.publicnode.com`.
+
+The network `resolver` is `172.30.53.0/24`. root_proxy (`HSD_MASTERS`) accepts numeric IPv4 addresses with an optional `:port` only, not host names. That is why the network uses fixed addresses in this subnet, which also sits inside the image's default BIND allow list (`172.16.0.0/12`). Assigned addresses: `.10` full node, `.20` volume resolver, `.30` dnsflsk, `.40` easy-nginx, `.50` ethereum-dns-gateway.
 
 Left at the image defaults, and documented by those READMEs:
 
 - `HSD_LOG_LEVEL` (default `info`) and `HSD_ADDITIONAL_PARAMS` (default `--no-sig0 --no-wallet`, plus the migrate flags in `run_hsd`). The handshake-full-node syslog script reads `SYSLOG_SERVER` and `SYSLOG_STDOUT`; with both unset, logs go to `/opt/data/logs/messages` (`data/handshake-full-node/logs/messages` on the host).
 - `DOH_SESSIONS` (dnsflsk worker count)
-- `DNSDIST_STATS_KEY` and `DNSDIST_STATS_ACL` — set both to open dnsdist metrics on port 8083. This file does not choose a password. `ETH_MASTERS` is not set.
+- `DNSDIST_STATS_KEY` and `DNSDIST_STATS_ACL` — set both to open dnsdist metrics on port 8083. This file does not choose a password.
+- `SYSLOG_STDOUT` and `SYSLOG_SERVER` on the gateway. Both stay unset, so logs go to `/opt/data/logs/messages`.
 
 ## Ports on the host
 
@@ -196,6 +224,8 @@ Left at the image defaults, and documented by those READMEs:
 | `127.0.0.1:8405` | HAProxy metrics |
 | `127.0.0.1:8083` | dnsdist metrics, only after the two stats variables above are set |
 | `80`, `443` | easy-nginx, profile `tls` only |
+
+The gateway's UDP port 53 is not published. Only BIND on the `resolver` network sends queries there. Client TCP to host port 53 still works. The TCP limit is the last hop, from BIND to the gateway.
 
 Host ports 8080 and 8081 stay published when the `tls` profile is on. easy-nginx still uses host ports 80 and 443. Limit 8080 and 8081 to the external TLS shedder, with a security group or the equivalent.
 
