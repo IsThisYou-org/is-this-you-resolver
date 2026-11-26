@@ -7,23 +7,23 @@ Docker Compose for the Is This You resolver and DNS-over-HTTPS stack. It runs th
 | `handshake-full-node` | `jamesstevens/handshake-full-node` | Handshake full node |
 | `ethereum-dns-gateway` | `jamesstevens/ethereum-dns-gateway` | ENS names, UDP port 53 |
 | `handshake-volume-resolver` | `jamesstevens/handshake-volume-resolver` | dnsdist, HAProxy, root_proxy, and one BIND process with two views |
-| `dnsflsk` | `jamesstevens/flask-doh` | JSON DoH / API |
+| `json-doh-proxy` | `jamesstevens/json-doh-proxy` | JSON DoH / API |
 | `easy-nginx` (profile `tls`) | `jamesstevens/easy-nginx` | Optional TLS termination |
 
 BIND is not its own container. The views in the image are `recursive` (resolver) and `root` (ICANN root secondary).
 
 `.eth` is answered by `ethereum-dns-gateway`. The Hub image must be the Python build from PR #2 (branch `cursor/python-ens-gateway-8047`, commit `55b89a7` or later). This file does not build that image.
 
-The dnsflsk README links the older Hub image `jamesstevens/doh`. This stack uses `jamesstevens/flask-doh`.
+The `json-doh-proxy` README is at <https://github.com/james-stevens/json-doh-proxy>.
 
 ## Traffic path
 
 HTTPS arrives at optional easy-nginx, which terminates TLS and proxies plain HTTP:
 
-- `api.isthisyou.org` → `dnsflsk` port 80 (JSON API)
+- `api.isthisyou.org` → `json-doh-proxy` port 80 (JSON API)
 - `doh.isthisyou.org` → `handshake-volume-resolver` port 80 (binary DoH)
 
-`dnsflsk` sends the query to dnsdist over UDP/53, and over TCP/53 when the answer is truncated. Binary DoH is served by dnsdist. HAProxy sits in front of it because nginx cannot speak to dnsdist directly. HAProxy forwards to dnsdist with `proto h2` on `127.0.0.1:800`. Classic DNS on port 53 goes straight to dnsdist.
+`json-doh-proxy` sends the query to dnsdist over UDP/53, and over TCP/53 when the answer is truncated. Binary DoH is served by dnsdist. HAProxy sits in front of it because nginx cannot speak to dnsdist directly. HAProxy forwards to dnsdist with `proto h2` on `127.0.0.1:800`. Classic DNS on port 53 goes straight to dnsdist.
 
 dnsdist splits on the RD flag. RD=1 goes to the BIND `recursive` view. RD=0 goes to root_proxy. Root-zone queries from the recursive view also go to root_proxy.
 
@@ -62,7 +62,7 @@ From this directory:
 docker compose up -d
 ```
 
-That starts the full node, the resolver, and dnsflsk. easy-nginx stays off.
+That starts the full node, the resolver, and json-doh-proxy. easy-nginx stays off.
 
 Handshake names wait until the full node has caught up with the chain. ICANN answers wait until BIND has loaded the root zone.
 
@@ -93,7 +93,7 @@ Logs:
 
 ```bash
 docker compose logs -f handshake-full-node
-docker compose logs -f dnsflsk
+docker compose logs -f json-doh-proxy
 ```
 
 `handshake-volume-resolver` writes syslog to `logs/messages` inside its data directory (on the host: `data/handshake-volume-resolver/logs/messages`). `ethereum-dns-gateway` and easy-nginx do the same under their own `data/` directories. `SYSLOG_STDOUT` is unset on the gateway, so it matches the other services.
@@ -107,27 +107,27 @@ dig @127.0.0.1 bitsofcode.eth WALLET
 
 The second check needs the Python gateway image from PR #2, and outbound HTTPS to Ethereum.
 
-A local check of the JSON API, from inside dnsflsk (the image includes `curl`):
+A local check of the JSON API, from inside json-doh-proxy (the image includes `curl`):
 
 ```bash
-docker compose exec dnsflsk curl -fsS 'http://127.0.0.1/dns/api/v1.0/resolv?name=example.com'
+docker compose exec json-doh-proxy curl -fsS 'http://127.0.0.1/dns/api/v1.0/resolv?name=example.com'
 ```
 
 ## Public endpoints
 
-- JSON API: <https://api.isthisyou.org/>. The parameters `servers` and `rd` exist only on this API. `servers` is the name used by dnsflsk.
+- JSON API: <https://api.isthisyou.org/>. The parameters `servers` and `rd` exist only on this API. `servers` is the name used by json-doh-proxy.
 - Binary DoH: <https://doh.isthisyou.org/>. Those parameters are not accepted here.
 - Classic DNS on the same host names, port 53, TCP and UDP.
 
-dnsflsk also answers `/dns/api/v1.0/resolv` and `/resolv`, as described in its own README.
+json-doh-proxy also answers `/dns/api/v1.0/resolv` and `/resolv`, as described in its own README.
 
-Only the JSON API (dnsflsk) accepts UTF-8 names in `name=` and converts them to Punycode. Binary DoH and port 53 need Punycode first. Clients should convert the name themselves, and should not use an ICANN-strict IDN converter, because Handshake names often contain Unicode that ICANN rules reject. Emoji names are common. The published `jamesstevens/flask-doh:latest` (17 November 2025) predates that change, so UTF-8 `name=` works only after the image is rebuilt and pushed.
+Only the JSON API (json-doh-proxy) accepts UTF-8 names in `name=` and converts them to Punycode. Binary DoH and port 53 need Punycode first. Clients should convert the name themselves, and should not use an ICANN-strict IDN converter, because Handshake names often contain Unicode that ICANN rules reject. Emoji names are common.
 
 ## TLS profile
 
 Enable easy-nginx only when this stack should terminate TLS on the host. A cloud-provider TLS shedder, or any other proxy on the instance, uses the plain HTTP ports that are published on every `docker compose up`, whether or not this profile is on:
 
-- host port 8080 → dnsflsk (`flask-doh`) port 80, the JSON API
+- host port 8080 → `json-doh-proxy` port 80, the JSON API
 - host port 8081 → `handshake-volume-resolver` port 80, binary DoH
 
 Both are plain HTTP. Limit them to the external shedder, with a security group or the equivalent.
@@ -155,7 +155,7 @@ P isthisyou.org http://172.30.53.30/ api.isthisyou.org
 P isthisyou.org http://172.30.53.20/ doh.isthisyou.org
 ```
 
-`172.30.53.30` is dnsflsk (the `flask-doh` image) and `172.30.53.20` is `handshake-volume-resolver`. Both listen on port 80, which is what an `http://` URL with no port uses. These addresses are the static addresses in `compose.yaml`. If those addresses change, change these lines to match. The cert name `isthisyou.org` is the basename of the PEM.
+`172.30.53.30` is `json-doh-proxy` and `172.30.53.20` is `handshake-volume-resolver`. Both listen on port 80, which is what an `http://` URL with no port uses. These addresses are the static addresses in `compose.yaml`. If those addresses change, change these lines to match. The cert name `isthisyou.org` is the basename of the PEM.
 
 ### PEM
 
@@ -198,18 +198,18 @@ Set here, so the services can reach each other:
 | --- | --- | --- | --- |
 | `HSD_MASTERS` | `handshake-volume-resolver` | `172.30.53.10` | Required list of Handshake nodes. `172.30.53.10` is `handshake-full-node`. No port is set, so root_proxy uses port 53, where `rd_bit_proxy` listens. |
 | `ETH_MASTERS` | `handshake-volume-resolver` | `172.30.53.50` | ENS gateway addresses, separated by `;`. `172.30.53.50` is `ethereum-dns-gateway`. No port is set, so BIND uses UDP port 53. This builds the `eth.` static-stub. |
-| `DOH_SERVERS` | `dnsflsk` | `172.30.53.20` | Resolver address. `172.30.53.20` is `handshake-volume-resolver`, whose dnsdist listens on port 53. Without this, dnsflsk uses Google's resolvers. |
+| `DOH_SERVERS` | `json-doh-proxy` | `172.30.53.20` | Resolver address. `172.30.53.20` is `handshake-volume-resolver`, whose dnsdist listens on port 53. Without this, json-doh-proxy uses Google's resolvers. |
 | `ETH_RPC_URL` | `ethereum-dns-gateway` | empty unless set on the host | Optional JSON-RPC URL. When set, this wins. |
 | `ALCHEMY_API_CODE` | `ethereum-dns-gateway` | empty unless set on the host | Optional Alchemy key. Used when `ETH_RPC_URL` is empty. Calls go to `https://eth-mainnet.g.alchemy.com/v2/<key>`. |
 
 If `ETH_RPC_URL` and `ALCHEMY_API_CODE` are both empty, the gateway uses `https://ethereum.publicnode.com`.
 
-The network `resolver` is `172.30.53.0/24`. root_proxy (`HSD_MASTERS`) accepts numeric IPv4 addresses with an optional `:port` only, not host names. That is why the network uses fixed addresses in this subnet, which also sits inside the image's default BIND allow list (`172.16.0.0/12`). Assigned addresses: `.10` full node, `.20` volume resolver, `.30` dnsflsk, `.40` easy-nginx, `.50` ethereum-dns-gateway.
+The network `resolver` is `172.30.53.0/24`. root_proxy (`HSD_MASTERS`) accepts numeric IPv4 addresses with an optional `:port` only, not host names. That is why the network uses fixed addresses in this subnet, which also sits inside the image's default BIND allow list (`172.16.0.0/12`). Assigned addresses: `.10` full node, `.20` volume resolver, `.30` json-doh-proxy, `.40` easy-nginx, `.50` ethereum-dns-gateway.
 
 Left at the image defaults, and documented by those READMEs:
 
 - `HSD_LOG_LEVEL` (default `info`) and `HSD_ADDITIONAL_PARAMS` (default `--no-sig0 --no-wallet`, plus the migrate flags in `run_hsd`). The handshake-full-node syslog script reads `SYSLOG_SERVER` and `SYSLOG_STDOUT`; with both unset, logs go to `/opt/data/logs/messages` (`data/handshake-full-node/logs/messages` on the host).
-- `DOH_SESSIONS` (dnsflsk worker count)
+- `DOH_SESSIONS` (json-doh-proxy worker count)
 - `DNSDIST_STATS_KEY` and `DNSDIST_STATS_ACL` — set both to open dnsdist metrics on port 8083. This file does not choose a password.
 - `SYSLOG_STDOUT` and `SYSLOG_SERVER` on the gateway. Both stay unset, so logs go to `/opt/data/logs/messages`.
 
@@ -218,7 +218,7 @@ Left at the image defaults, and documented by those READMEs:
 | Published | Goes to |
 | --- | --- |
 | `53/tcp`, `53/udp` | dnsdist in `handshake-volume-resolver` |
-| `8080` | dnsflsk (`flask-doh`) port 80, JSON API. Plain HTTP. Published on every `docker compose up`. |
+| `8080` | `json-doh-proxy` port 80, JSON API. Plain HTTP. Published on every `docker compose up`. |
 | `8081` | `handshake-volume-resolver` port 80, binary DoH. Plain HTTP. Published on every `docker compose up`. |
 | `127.0.0.1:9119` | BIND metrics |
 | `127.0.0.1:8405` | HAProxy metrics |

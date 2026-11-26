@@ -77,9 +77,9 @@ services:
       - "127.0.0.1:8405:8405"
       - "127.0.0.1:8083:8083"
 
-  dnsflsk:
-    image: jamesstevens/flask-doh
-    container_name: dnsflsk
+  json-doh-proxy:
+    image: jamesstevens/json-doh-proxy
+    container_name: json-doh-proxy
     read_only: true
     restart: unless-stopped
     depends_on:
@@ -99,7 +99,7 @@ services:
     read_only: true
     restart: unless-stopped
     depends_on:
-      - dnsflsk
+      - json-doh-proxy
       - handshake-volume-resolver
     networks:
       resolver:
