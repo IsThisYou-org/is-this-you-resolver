@@ -1,14 +1,15 @@
 # Is This You resolver
 
-Docker Compose for the Is This You resolver and DNS-over-HTTPS stack. It runs the published container images. It does not build them.
+Docker Compose for the Is This You resolver and DNS-over-HTTPS stack. It runs published container images. It does not build them. The definition of `jamesstevens/is-this-you-icann-resolver` is in `is-this-you-icann-resolver/` so that directory can move into its own repository. This compose file only names the image.
 
-| Service | Image | Role |
-| --- | --- | --- |
-| `handshake-full-node` | `jamesstevens/handshake-full-node` | Handshake full node |
-| `ethereum-dns-gateway` | `jamesstevens/ethereum-dns-gateway` | ENS names, UDP port 53 |
-| `handshake-volume-resolver` | `jamesstevens/handshake-volume-resolver` | dnsdist, HAProxy, root_proxy, and one BIND process with two views |
-| `json-doh-proxy` | `jamesstevens/json-doh-proxy` | JSON DoH / API |
-| `easy-nginx` (profile `tls`) | `jamesstevens/easy-nginx` | Optional TLS termination |
+| Service | Image | Profiles | Role |
+| --- | --- | --- | --- |
+| `handshake-full-node` | `jamesstevens/handshake-full-node` | `handshake`, `tls-handshake` | Handshake full node |
+| `ethereum-dns-gateway` | `jamesstevens/ethereum-dns-gateway` | `handshake`, `tls-handshake` | ENS names, UDP port 53 |
+| `handshake-volume-resolver` | `jamesstevens/handshake-volume-resolver` | `handshake`, `tls-handshake` | dnsdist, HAProxy, root_proxy, and one BIND process with two views |
+| `is-this-you-icann-resolver` | `jamesstevens/is-this-you-icann-resolver` | `icann`, `tls-icann` | Local ICANN root (Unbound) |
+| `json-doh-proxy` | `jamesstevens/json-doh-proxy` | `json`, `icann`, `handshake`, `tls-icann`, `tls-handshake` | JSON DoH / API |
+| `easy-nginx` | `jamesstevens/easy-nginx` | `tls-handshake`, `tls-icann` | TLS termination |
 
 BIND is not its own container. The views in the image are `recursive` (resolver) and `root` (ICANN root secondary).
 
@@ -16,7 +17,41 @@ BIND is not its own container. The views in the image are `recursive` (resolver)
 
 The `json-doh-proxy` README is at <https://github.com/james-stevens/json-doh-proxy>.
 
+## Modes
+
+`.env` sets `COMPOSE_PROFILES=handshake`, so `docker compose up` starts the full Handshake stack. That is the same set of services a plain `docker compose up` used to start.
+
+A `--profile` flag replaces that list. It does not add to it. `docker compose --profile json up -d` is only the json mode. The same is true of `COMPOSE_PROFILES=json docker compose up -d`. TLS is not an add-on profile. `tls-handshake` is the Handshake stack plus easy-nginx, and `tls-icann` is the icann stack plus easy-nginx.
+
+Compose does not tell a container which `--profile` flags were used, so there is no profile-less service that can fail only when no mode was selected. The `.env` default is what keeps a plain `up` on the full stack.
+
+| Mode | Included | Handshake | Cost | Suits | Trust |
+| --- | --- | --- | --- | --- | --- |
+| `json` | `json-doh-proxy` | No | Lightest. No chain and no local copy of the root | A small site that wants the JSON API for ICANN names. Not a large site: with no `LOCAL_ICANN_ROOT`, `servers=icann-root` sends `rd=0` `do=1` queries straight to the roots `d`, `f`, `j` and `k` | The client's own validation |
+| `icann` | `is-this-you-icann-resolver` and `json-doh-proxy` | No | The root zone, a few tens of megabytes. No Handshake chain | Sites that want their own ICANN root and DNSSEC validation, without Handshake | DNSSEC, using the root trust anchor in `is-this-you-icann-resolver` |
+| `handshake` | `handshake-full-node`, `ethereum-dns-gateway`, `handshake-volume-resolver` and `json-doh-proxy` | Yes | About 45 to 50 GB for the Handshake chain | Operators who serve Handshake names | The trust anchor is the blockchain. Anyone validating independently needs their own full node / stack |
+| `tls-icann` | The `icann` stack plus easy-nginx | No | Same as `icann`, plus the nginx proxy | The `icann` case, when this host should terminate TLS | Same as `icann` |
+| `tls-handshake` | The `handshake` stack plus easy-nginx | Yes | Same as `handshake` | The `handshake` case, when this host should terminate TLS | Same as `handshake` |
+
+```bash
+docker compose --profile json up -d
+docker compose --profile icann up -d
+docker compose --profile handshake up -d
+docker compose --profile tls-icann up -d
+docker compose --profile tls-handshake up -d
+```
+
+`json` leaves `LOCAL_ICANN_ROOT` unset and sets `DOH_SERVERS` to `https://dns.google/dns-query,https://cloudflare-dns.com/dns-query`. Ordinary queries go to Google and Cloudflare over DoH. `servers=icann-root` is handled inside json-doh-proxy, which this repository does not build.
+
+`icann` points json-doh-proxy at `172.30.53.60`. `DOH_SERVERS` and `LOCAL_ICANN_ROOT` are both that address. `is-this-you-icann-resolver` runs Unbound from Alpine 3.24. It holds `.` as an `auth-zone`, transferred from the ICANN transfer servers `192.0.32.132` and `192.0.47.132` and from `c` and `f` root, with `zonemd-check`, `for-downstream` and `for-upstream` on, and DNSSEC validation with the root trust anchor shipped in the image. `rd=0` queries for data in that zone (`. SOA`, `com. DS`) are authoritative. A query for a name below a delegation is a referral from this copy of the root. Until `jamesstevens/is-this-you-icann-resolver` is published, build it locally with `is-this-you-icann-resolver/dkmk`. This repository does not push the image.
+
+`handshake` keeps the previous environment. `DOH_SERVERS` is `172.30.53.20`. `LOCAL_ICANN_ROOT` is unset.
+
+The JSON API container is always named `json-doh-proxy`. Compose needs a separate service key per environment. `json-doh-proxy` is in `handshake` and `tls-handshake`. `json-doh-proxy-icann` is in `icann` and `tls-icann`. `json-doh-proxy-json` is in `json`. `docker logs json-doh-proxy` follows the container, whichever mode is running.
+
 ## Traffic path
+
+The path below is the `handshake` profile.
 
 HTTPS arrives at optional easy-nginx, which terminates TLS and proxies plain HTTP:
 
@@ -48,11 +83,11 @@ handshake-volume-resolver PR #15 is not on `master` yet (`60ed633` on `dev`). It
 ## Requirements
 
 - Docker Engine with Compose v2
-- About 45 to 50 GB free for the Handshake chain, on the filesystem that holds the data directory (below). The other services use very little disk
-- UDP and TCP port 53 free on the host
-- For the `tls` profile, TCP ports 80 and 443, and a PEM (below)
+- For the `handshake` profile, about 45 to 50 GB free for the Handshake chain, on the filesystem that holds the data directory (below). The `json` and `icann` profiles use very little disk
+- For the `handshake` and `icann` profiles, UDP and TCP port 53 free on the host. The `json` profile does not publish port 53
+- For `tls-handshake` or `tls-icann`, TCP ports 80 and 443, and a PEM (below)
 
-The resolver transfers the ICANN root zone from the primaries built into the image, so the host needs outbound DNS to those servers. The full node needs outbound access to the Handshake network. The gateway needs outbound HTTPS to its Ethereum RPC host. With both RPC variables empty, that host is `ethereum.publicnode.com`. Client networks often block or intercept outbound port 53; HTTPS / DoH is the reliable way to query this service.
+`handshake-volume-resolver` and `is-this-you-icann-resolver` each transfer the ICANN root zone, so the host needs outbound DNS to those servers. The full node needs outbound access to the Handshake network. The gateway needs outbound HTTPS to its Ethereum RPC host. With both RPC variables empty, that host is `ethereum.publicnode.com`. Client networks often block or intercept outbound port 53; HTTPS / DoH is the reliable way to query this service.
 
 ## Run
 
@@ -62,15 +97,23 @@ From this directory:
 docker compose up -d
 ```
 
-That starts the full node, the resolver, and json-doh-proxy. easy-nginx stays off.
+That is the `handshake` profile, from `.env`. It starts the full node, the resolver, and json-doh-proxy. easy-nginx stays off. TLS for that stack is its own profile, because a `--profile` flag replaces the `.env` list:
 
-Handshake names wait until the full node has caught up with the chain. ICANN answers wait until BIND has loaded the root zone.
+```bash
+docker compose --profile tls-handshake up -d
+```
+
+The other modes are in [Modes](#modes).
+
+Handshake names wait until the full node has caught up with the chain. ICANN answers in that profile wait until BIND has loaded the root zone. In the `icann` profile they wait until Unbound has loaded its `auth-zone`.
 
 To stop, without deleting the chain data:
 
 ```bash
 docker compose down
 ```
+
+`down` stops the services in the active profile. After `--profile json` or `--profile icann`, pass that same profile (or the same `COMPOSE_PROFILES` value) so those containers are included. A plain `docker compose down` follows `.env`, which is `handshake`.
 
 That leaves the host directories in place. Deleting `data/handshake-full-node` (or the same directory under `DATA_DIR`) makes the node fetch the chain again.
 
@@ -81,6 +124,7 @@ Host state for every container that needs a disk lives under one directory, `./d
 | `data/handshake-full-node` | `handshake-full-node` | `/opt/data` (chain in `hsd/`) |
 | `data/ethereum-dns-gateway` | `ethereum-dns-gateway` | `/opt/data` |
 | `data/handshake-volume-resolver` | `handshake-volume-resolver` | `/opt/data` |
+| `data/is-this-you-icann-resolver` | `is-this-you-icann-resolver` | `/opt/data` |
 | `data/easy-nginx` | `easy-nginx` | `/opt/data` |
 
 To put that whole tree on another disk, set `DATA_DIR` to an absolute host path. Compose reads it when it interpolates the bind mounts. It is not an environment variable inside a container. Copy the committed `data/` tree to the new root first, so `easy-nginx/etc/nginx.input` is still present, then add your PEMs there.
@@ -96,7 +140,9 @@ docker compose logs -f handshake-full-node
 docker compose logs -f json-doh-proxy
 ```
 
-`handshake-volume-resolver` writes syslog to `logs/messages` inside its data directory (on the host: `data/handshake-volume-resolver/logs/messages`). `ethereum-dns-gateway` and easy-nginx do the same under their own `data/` directories. `SYSLOG_STDOUT` is unset on the gateway, so it matches the other services.
+Logs follow the active profile, same as `up`. For json or icann, pass that `--profile`, or use `docker logs json-doh-proxy`.
+
+`handshake-volume-resolver` writes syslog to `logs/messages` inside its data directory (on the host: `data/handshake-volume-resolver/logs/messages`). `ethereum-dns-gateway`, `is-this-you-icann-resolver` and easy-nginx do the same under their own `data/` directories. `SYSLOG_STDOUT` is unset on the gateway and on `is-this-you-icann-resolver`, so they match the other services.
 
 A local check of classic DNS, once the root zone is loaded:
 
@@ -123,19 +169,18 @@ json-doh-proxy also answers `/dns/api/v1.0/resolv` and `/resolv`, as described i
 
 Only the JSON API (json-doh-proxy) accepts UTF-8 names in `name=` and converts them to Punycode. Binary DoH and port 53 need Punycode first. Clients should convert the name themselves, and should not use an ICANN-strict IDN converter, because Handshake names often contain Unicode that ICANN rules reject. Emoji names are common.
 
-## TLS profile
+## TLS profiles
 
-Enable easy-nginx only when this stack should terminate TLS on the host. A cloud-provider TLS shedder, or any other proxy on the instance, uses the plain HTTP ports that are published on every `docker compose up`, whether or not this profile is on:
+`tls-handshake` and `tls-icann` each start a whole mode plus easy-nginx. Use one when this host should terminate TLS. A cloud-provider TLS shedder, or any other proxy on the instance, uses the plain HTTP ports of the matching mode instead:
 
-- host port 8080 → `json-doh-proxy` port 80, the JSON API
-- host port 8081 → `handshake-volume-resolver` port 80, binary DoH
+- host port 8080 → `json-doh-proxy` port 80, the JSON API (every mode)
+- host port 8081 → `handshake-volume-resolver` port 80, binary DoH (`handshake` and `tls-handshake`)
 
-Both are plain HTTP. Limit them to the external shedder, with a security group or the equivalent.
-
-Start TLS with this stack:
+Both are plain HTTP. Limit them to the external shedder, with a security group or the equivalent. The `doh.isthisyou.org` line in `nginx.input` proxies to `172.30.53.20`, which is up in `handshake` and `tls-handshake`.
 
 ```bash
-docker compose --profile tls up -d
+docker compose --profile tls-handshake up -d
+docker compose --profile tls-icann up -d
 ```
 
 ### Config file
@@ -172,7 +217,7 @@ Supply `data/easy-nginx/pems/<domain>.pem` on the host. The cert-name field is `
 Place the file before the first start of the profile. If you add it later:
 
 ```bash
-docker compose --profile tls restart easy-nginx
+docker compose --profile tls-handshake restart easy-nginx
 ```
 
 The same host directory is scratch space. The container creates directories there, including `logs` and `htdocs`.
@@ -186,7 +231,8 @@ The same host directory is scratch space. The container creates directories ther
 | `handshake-full-node/` | `/opt/data` | Handshake chain data, in `hsd/` inside that directory. Allow 45 to 50 GB. The container also writes `logs/` here. |
 | `ethereum-dns-gateway/` | `/opt/data` | Gateway syslog, in `logs/`. |
 | `handshake-volume-resolver/` | `/opt/data` | Resolver state and syslog. Optional authoritative zones go in `auth_zones/`, one file per zone, file name equal to the zone name. handshake-volume-resolver PR #13 (merge `e7ccf5b`, 11 November 2026) fixed `start_named` so an empty `/opt/data/auth_zones` no longer loads a zone named `*`. The fix reaches Docker Hub `latest` only after that image is rebuilt and pushed. Until the published image includes the fix, create `auth_zones` only when it contains zone files. |
-| `easy-nginx/` | `/opt/data` | easy-nginx scratch space, `etc/nginx.input`, and `pems/`. Profile `tls` only. |
+| `is-this-you-icann-resolver/` | `/opt/data` | Root zone file (`root.zone`) and syslog, in `logs/`. Profile `icann` only. |
+| `easy-nginx/` | `/opt/data` | easy-nginx scratch space, `etc/nginx.input`, and `pems/`. Profiles `tls-handshake` and `tls-icann` only. |
 
 handshake-full-node stores the chain in `/opt/data/hsd` (`bin/run_hsd`; `master` and `dev` are both `42957c8`) and changes that directory's owner to the `hsd` user. `rd_bit_proxy` listens on port 53. hsd itself still uses a separate authoritative port (root zone only) and a recursive port; the proxy is how both are reached, split on the RD bit.
 
@@ -198,36 +244,37 @@ Set here, so the services can reach each other:
 | --- | --- | --- | --- |
 | `HSD_MASTERS` | `handshake-volume-resolver` | `172.30.53.10` | Required list of Handshake nodes. `172.30.53.10` is `handshake-full-node`. No port is set, so root_proxy uses port 53, where `rd_bit_proxy` listens. |
 | `ETH_MASTERS` | `handshake-volume-resolver` | `172.30.53.50` | ENS gateway addresses, separated by `;`. `172.30.53.50` is `ethereum-dns-gateway`. No port is set, so BIND uses UDP port 53. This builds the `eth.` static-stub. |
-| `DOH_SERVERS` | `json-doh-proxy` | `172.30.53.20` | Resolver address. `172.30.53.20` is `handshake-volume-resolver`, whose dnsdist listens on port 53. Without this, json-doh-proxy uses Google's resolvers. |
+| `DOH_SERVERS` | `json-doh-proxy` | `172.30.53.20` in `handshake`. `172.30.53.60` in `icann`. `https://dns.google/dns-query,https://cloudflare-dns.com/dns-query` in `json` | Where ordinary queries go. In `handshake`, `172.30.53.20` is `handshake-volume-resolver`. In `icann`, `172.30.53.60` is `is-this-you-icann-resolver`. In `json`, the two values are Google and Cloudflare DoH. |
+| `LOCAL_ICANN_ROOT` | `json-doh-proxy` | unset, except `172.30.53.60` in `icann` | Local root for `servers=icann-root`. Unset in `json` and `handshake`, so that parameter queries roots `d`, `f`, `j` and `k` with `rd=0` and `do=1`. Set in `icann` to the Unbound address. |
 | `ETH_RPC_URL` | `ethereum-dns-gateway` | empty unless set on the host | Optional JSON-RPC URL. When set, this wins. |
 | `ALCHEMY_API_CODE` | `ethereum-dns-gateway` | empty unless set on the host | Optional Alchemy key. Used when `ETH_RPC_URL` is empty. Calls go to `https://eth-mainnet.g.alchemy.com/v2/<key>`. |
 
 If `ETH_RPC_URL` and `ALCHEMY_API_CODE` are both empty, the gateway uses `https://ethereum.publicnode.com`.
 
-The network `resolver` is `172.30.53.0/24`. root_proxy (`HSD_MASTERS`) accepts numeric IPv4 addresses with an optional `:port` only, not host names. That is why the network uses fixed addresses in this subnet, which also sits inside the image's default BIND allow list (`172.16.0.0/12`). Assigned addresses: `.10` full node, `.20` volume resolver, `.30` json-doh-proxy, `.40` easy-nginx, `.50` ethereum-dns-gateway.
+The network `resolver` is `172.30.53.0/24`. root_proxy (`HSD_MASTERS`) accepts numeric IPv4 addresses with an optional `:port` only, not host names. That is why the network uses fixed addresses in this subnet, which also sits inside the image's default BIND allow list (`172.16.0.0/12`). Assigned addresses: `.10` full node, `.20` volume resolver, `.30` json-doh-proxy, `.40` easy-nginx, `.50` ethereum-dns-gateway, `.60` is-this-you-icann-resolver.
 
 Left at the image defaults, and documented by those READMEs:
 
 - `HSD_LOG_LEVEL` (default `info`) and `HSD_ADDITIONAL_PARAMS` (default `--no-sig0 --no-wallet`, plus the migrate flags in `run_hsd`). The handshake-full-node syslog script reads `SYSLOG_SERVER` and `SYSLOG_STDOUT`; with both unset, logs go to `/opt/data/logs/messages` (`data/handshake-full-node/logs/messages` on the host).
 - `DOH_SESSIONS` (json-doh-proxy worker count)
 - `DNSDIST_STATS_KEY` and `DNSDIST_STATS_ACL` — set both to open dnsdist metrics on port 8083. This file does not choose a password.
-- `SYSLOG_STDOUT` and `SYSLOG_SERVER` on the gateway. Both stay unset, so logs go to `/opt/data/logs/messages`.
+- `SYSLOG_STDOUT` and `SYSLOG_SERVER` on the gateway and on `is-this-you-icann-resolver`. Both stay unset, so logs go to `/opt/data/logs/messages`.
 
 ## Ports on the host
 
 | Published | Goes to |
 | --- | --- |
-| `53/tcp`, `53/udp` | dnsdist in `handshake-volume-resolver` |
-| `8080` | `json-doh-proxy` port 80, JSON API. Plain HTTP. Published on every `docker compose up`. |
-| `8081` | `handshake-volume-resolver` port 80, binary DoH. Plain HTTP. Published on every `docker compose up`. |
+| `53/tcp`, `53/udp` | `handshake` and `tls-handshake`: dnsdist in `handshake-volume-resolver`. `icann` and `tls-icann`: Unbound in `is-this-you-icann-resolver`. Not published in `json` |
+| `8080` | `json-doh-proxy` port 80, JSON API. Plain HTTP. Published in every mode. |
+| `8081` | `handshake-volume-resolver` port 80, binary DoH. Plain HTTP. `handshake` and `tls-handshake` |
 | `127.0.0.1:9119` | BIND metrics |
 | `127.0.0.1:8405` | HAProxy metrics |
 | `127.0.0.1:8083` | dnsdist metrics, only after the two stats variables above are set |
-| `80`, `443` | easy-nginx, profile `tls` only |
+| `80`, `443` | easy-nginx. Profiles `tls-handshake` and `tls-icann` only |
 
 The gateway's UDP port 53 is not published. Only BIND on the `resolver` network sends queries there. Client TCP to host port 53 still works. The TCP limit is the last hop, from BIND to the gateway.
 
-Host ports 8080 and 8081 stay published when the `tls` profile is on. easy-nginx still uses host ports 80 and 443. Limit 8080 and 8081 to the external TLS shedder, with a security group or the equivalent.
+Host port 8080 stays published in `tls-handshake` and `tls-icann`. Port 8081 stays published in `tls-handshake`. easy-nginx uses host ports 80 and 443. Limit 8080 and 8081 to the external TLS shedder, with a security group or the equivalent.
 
 Handshake peer port 12038 is not published by `compose.yaml`. The node still syncs over outbound connections. Without inbound 12038 it is a private node, not a public one. To run a public node, publish `12038/tcp` on `handshake-full-node` and open it in the firewall.
 

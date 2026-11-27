@@ -1,0 +1,4 @@
+#! /bin/sh
+
+mkdir -p /opt/data/logs || exec sleep 30
+exec /sbin/init

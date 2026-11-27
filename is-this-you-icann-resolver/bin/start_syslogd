@@ -1,0 +1,14 @@
+#! /bin/sh
+
+if test "${SYSLOG_SERVER}"
+	then
+		exec /sbin/syslogd -n -R ${SYSLOG_SERVER}
+	fi
+
+if test "${SYSLOG_STDOUT}" = "Y"
+	then
+		exec /sbin/syslogd -n -O -
+	fi
+
+mkdir -p /opt/data/logs || exec sleep 30
+exec /sbin/syslogd -n -O /opt/data/logs/messages -b 9 -s 100000

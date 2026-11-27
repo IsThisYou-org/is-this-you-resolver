@@ -1,0 +1,9 @@
+#! /bin/sh
+
+if ! /usr/sbin/unbound-checkconf /usr/local/etc/unbound.conf
+	then
+		echo "unbound-checkconf failed"
+		exec sleep 30
+	fi
+
+exec /usr/sbin/unbound -d -c /usr/local/etc/unbound.conf

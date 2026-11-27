@@ -1,0 +1,8 @@
+#! /bin/bash
+
+cd "$(dirname "$0")"
+date +%Y%m%d.%H%M > build.txt
+docker image build -t "$(cat list)" .
+status=$?
+rm -f build.txt
+exit "${status}"
