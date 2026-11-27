@@ -1,9 +1,9 @@
 # Is This You resolver and DoH stack.
 #
-# Three modes, selected with a Compose profile: json, icann, handshake.
+# Modes are Compose profiles: json, icann, handshake, tls-handshake, tls-icann.
 # .env sets COMPOSE_PROFILES=handshake, so `docker compose up` starts
 # that mode. A --profile flag replaces the list from .env.
-# `tls` is an extra profile. Name it together with a mode.
+# tls-handshake and tls-icann are the TLS stacks. There is no add-on tls profile.
 #
 # Images, ports, volume paths, and environment variables come from the
 # component repositories (Dockerfiles, dkrun, and READMEs). Addresses on
@@ -22,7 +22,7 @@ networks:
 
 services:
   handshake-full-node:
-    profiles: ["handshake"]
+    profiles: ["handshake", "tls-handshake"]
     image: jamesstevens/handshake-full-node
     container_name: handshake-full-node
     read_only: true
@@ -36,7 +36,7 @@ services:
       - ${DATA_DIR:-./data}/handshake-full-node:/opt/data
 
   ethereum-dns-gateway:
-    profiles: ["handshake"]
+    profiles: ["handshake", "tls-handshake"]
     image: jamesstevens/ethereum-dns-gateway
     container_name: ethereum-dns-gateway
     read_only: true
@@ -54,7 +54,7 @@ services:
       - ${DATA_DIR:-./data}/ethereum-dns-gateway:/opt/data
 
   handshake-volume-resolver:
-    profiles: ["handshake"]
+    profiles: ["handshake", "tls-handshake"]
     image: jamesstevens/handshake-volume-resolver
     container_name: handshake-volume-resolver
     read_only: true
@@ -86,7 +86,7 @@ services:
       - "127.0.0.1:8083:8083"
 
   is-this-you-icann-resolver:
-    profiles: ["icann"]
+    profiles: ["icann", "tls-icann"]
     image: jamesstevens/is-this-you-icann-resolver
     container_name: is-this-you-icann-resolver
     read_only: true
@@ -102,8 +102,9 @@ services:
 
   # One container name, three service keys: the environment differs by mode,
   # and only one mode is started. The container is always json-doh-proxy.
+  # Together the keys cover json, icann, handshake, tls-icann, tls-handshake.
   json-doh-proxy:
-    profiles: ["handshake"]
+    profiles: ["handshake", "tls-handshake"]
     image: jamesstevens/json-doh-proxy
     container_name: json-doh-proxy
     read_only: true
@@ -134,7 +135,7 @@ services:
       - "8080:80"
 
   json-doh-proxy-icann:
-    profiles: ["icann"]
+    profiles: ["icann", "tls-icann"]
     image: jamesstevens/json-doh-proxy
     container_name: json-doh-proxy
     read_only: true
@@ -153,14 +154,11 @@ services:
   easy-nginx:
     image: jamesstevens/easy-nginx
     container_name: easy-nginx
-    profiles: ["tls"]
+    profiles: ["tls-handshake", "tls-icann"]
     read_only: true
     restart: unless-stopped
     depends_on:
       json-doh-proxy:
-        condition: service_started
-        required: false
-      json-doh-proxy-json:
         condition: service_started
         required: false
       json-doh-proxy-icann:
