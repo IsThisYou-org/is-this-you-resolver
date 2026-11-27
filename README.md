@@ -19,9 +19,11 @@ The `json-doh-proxy` README is at <https://github.com/james-stevens/json-doh-pro
 
 ## Modes
 
-Compose starts every service that has no profile, and also the services in the profiles you name. The three modes must not run together, so none of their services is left without a profile. `docker compose up` with no profile starts nothing. What `docker compose up` used to start, the full Handshake stack, is now `--profile handshake`.
+`.env` sets `COMPOSE_PROFILES=handshake`, so `docker compose up` starts the full Handshake stack. That is the same set of services a plain `docker compose up` used to start.
 
-Use one of `json`, `icann` or `handshake`. Add `tls` when this stack should terminate TLS.
+A `--profile` flag replaces that list. It does not add to it. `docker compose --profile json up -d` is only the json mode. The same is true of `COMPOSE_PROFILES=json docker compose up -d`. Add `tls` by naming it with a mode: `--profile tls` on its own would drop the `.env` default and start only easy-nginx.
+
+Compose does not tell a container which `--profile` flags were used, so there is no profile-less service that can fail only when no mode was selected. The `.env` default is what keeps a plain `up` on the full stack.
 
 | Mode | Included | Handshake | Cost | Suits | Trust |
 | --- | --- | --- | --- | --- | --- |
@@ -91,9 +93,19 @@ handshake-volume-resolver PR #15 is not on `master` yet (`60ed633` on `dev`). It
 
 ## Run
 
-From this directory, pass one mode profile. The commands are in [Modes](#modes). `docker compose up -d` on its own starts nothing.
+From this directory:
 
-With `--profile handshake`, the full node, the resolver, and json-doh-proxy start. easy-nginx stays off unless you also pass `--profile tls`.
+```bash
+docker compose up -d
+```
+
+That is the `handshake` profile, from `.env`. It starts the full node, the resolver, and json-doh-proxy. easy-nginx stays off. To add TLS, name both profiles, because any `--profile` flag replaces the `.env` list:
+
+```bash
+docker compose --profile handshake --profile tls up -d
+```
+
+The other modes are in [Modes](#modes).
 
 Handshake names wait until the full node has caught up with the chain. ICANN answers in that profile wait until BIND has loaded the root zone. In the `icann` profile they wait until Unbound has loaded its `auth-zone`.
 
@@ -102,6 +114,8 @@ To stop, without deleting the chain data:
 ```bash
 docker compose down
 ```
+
+`down` stops the services in the active profile. After `--profile json` or `--profile icann`, pass that same profile (or the same `COMPOSE_PROFILES` value) so those containers are included. A plain `docker compose down` follows `.env`, which is `handshake`.
 
 That leaves the host directories in place. Deleting `data/handshake-full-node` (or the same directory under `DATA_DIR`) makes the node fetch the chain again.
 
@@ -118,15 +132,17 @@ Host state for every container that needs a disk lives under one directory, `./d
 To put that whole tree on another disk, set `DATA_DIR` to an absolute host path. Compose reads it when it interpolates the bind mounts. It is not an environment variable inside a container. Copy the committed `data/` tree to the new root first, so `easy-nginx/etc/nginx.input` is still present, then add your PEMs there.
 
 ```bash
-DATA_DIR=/srv/isthisyou docker compose --profile handshake up -d
+DATA_DIR=/srv/isthisyou docker compose up -d
 ```
 
 Logs:
 
 ```bash
-docker compose --profile handshake logs -f handshake-full-node
-docker compose --profile handshake logs -f json-doh-proxy
+docker compose logs -f handshake-full-node
+docker compose logs -f json-doh-proxy
 ```
+
+Logs follow the active profile, same as `up`. For json or icann, pass that `--profile`, or use `docker logs json-doh-proxy`.
 
 `handshake-volume-resolver` writes syslog to `logs/messages` inside its data directory (on the host: `data/handshake-volume-resolver/logs/messages`). `ethereum-dns-gateway`, `is-this-you-icann-resolver` and easy-nginx do the same under their own `data/` directories. `SYSLOG_STDOUT` is unset on the gateway and on `is-this-you-icann-resolver`, so they match the other services.
 

@@ -1,11 +1,9 @@
 # Is This You resolver and DoH stack.
 #
 # Three modes, selected with a Compose profile: json, icann, handshake.
-# Compose also starts every service that has no profile. The modes are
-# mutually exclusive, so those services are not left without a profile.
-# `docker compose up` with no profile therefore starts nothing.
-# The previous default is `--profile handshake`.
-# `tls` is an extra profile. Combine it with one mode.
+# .env sets COMPOSE_PROFILES=handshake, so `docker compose up` starts
+# that mode. A --profile flag replaces the list from .env.
+# `tls` is an extra profile. Name it together with a mode.
 #
 # Images, ports, volume paths, and environment variables come from the
 # component repositories (Dockerfiles, dkrun, and READMEs). Addresses on
