@@ -7,6 +7,12 @@ data/easy-nginx/logs/
 data/easy-nginx/htdocs/
 data/handshake-volume-resolver/logs/
 data/ethereum-dns-gateway/logs/
+data/is-this-you-icann-resolver/logs/
+data/is-this-you-icann-resolver/root.zone
+
+# Produced by is-this-you-icann-resolver/dkmk. Never commit it.
+is-this-you-icann-resolver/build.txt
+is-this-you-icann-resolver/data/
 
 # Handshake chain and syslog under the full-node bind mount.
 data/handshake-full-node/*
