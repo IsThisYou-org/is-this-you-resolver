@@ -290,4 +290,4 @@ Containers use `restart: unless-stopped`. The component `dkrun` scripts are inte
 
 ## Continuous integration
 
-GitHub Actions (`.github/workflows/ci.yml`) runs on push and on pull request. The job sets `COMPOSE_PROFILES=icann`, which replaces the `handshake` value in `.env`, and starts that profile only. There is no Handshake node and no TLS. It pulls the published images named in `compose.yaml` and checks classic DNS on port 53, DNS-over-HTTPS on port 8080, and the Unbound Prometheus metrics on `127.0.0.1:9167`. Each image is tested in its own repository.
+GitHub Actions (`.github/workflows/ci.yml`) runs on push and on pull request. The job sets `COMPOSE_PROFILES=icann`, which replaces the `handshake` value in `.env`, and starts that profile only. There is no Handshake node and no TLS. It pulls the published images named in `compose.yaml` and checks classic DNS on port 53, DNS-over-HTTPS on port 8080, and the Unbound Prometheus metrics on `127.0.0.1:9167`. The hosted runner's `systemd-resolved` stub holds port 53, so the job turns that stub off before publishing the port. Each image is tested in its own repository.

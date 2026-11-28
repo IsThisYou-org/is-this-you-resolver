@@ -71,6 +71,29 @@ jobs:
             sleep 15
             docker compose pull
           }
+          # ubuntu-latest is Ubuntu 26.04. systemd-resolved's stub listens
+          # on 127.0.0.53:53 and 127.0.0.54:53, and a publish of 0.0.0.0:53
+          # then fails with "address already in use". Turn the stub off.
+          # Host lookups stay on resolved's upstream file. Images are
+          # already pulled, so this does not depend on the stub.
+          if sudo ss -H -lntu 'sport = :53' | grep -q .
+          then
+            printf 'Port 53 is in use on the runner:\n'
+            sudo ss -lptnu 'sport = :53' || true
+            sudo mkdir -p /etc/systemd/resolved.conf.d
+            printf '[Resolve]\nDNSStubListener=no\n' | sudo tee /etc/systemd/resolved.conf.d/no-stub.conf >/dev/null
+            if test -e /run/systemd/resolve/resolv.conf
+            then
+              sudo ln -sf /run/systemd/resolve/resolv.conf /etc/resolv.conf
+            fi
+            sudo systemctl restart systemd-resolved
+          fi
+          if sudo ss -H -lntu 'sport = :53' | grep -q .
+          then
+            printf 'Port 53 is still in use; the icann profile cannot publish it\n' >&2
+            sudo ss -lptnu 'sport = :53' || true
+            exit 1
+          fi
           docker compose up -d
           docker compose ps -a
 
