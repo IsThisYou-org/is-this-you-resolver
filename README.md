@@ -273,6 +273,13 @@ Left at the image defaults, and documented by those READMEs:
 | `127.0.0.1:9167` | Unbound Prometheus metrics (`unbound_exporter`), `icann` and `tls-icann` |
 | `80`, `443` | easy-nginx. Profiles `tls-handshake` and `tls-icann` only |
 
+`127.0.0.1:9167` is deliberately bound to loopback, as are the other metrics ports. A Prometheus merger or proxy on the Docker host can scrape every container's loopback exporter and expose a single port, so fewer ports stay open.
+
+- [exporter-merger](https://github.com/rebuy-de/exporter-merger) merges several `/metrics` endpoints into one.
+- [exporter_exporter](https://github.com/QubitProducts/exporter_exporter) is a reverse proxy that puts several exporters behind one port (`/proxy?module=...`).
+
+If you are not running one, change the bind address in `compose.yaml`.
+
 The gateway's UDP port 53 is not published. Only BIND on the `resolver` network sends queries there. Client TCP to host port 53 still works. The TCP limit is the last hop, from BIND to the gateway.
 
 Host port 8080 stays published in `tls-handshake` and `tls-icann`. Port 8081 stays published in `tls-handshake`. easy-nginx uses host ports 80 and 443. Limit 8080 and 8081 to the external TLS shedder, with a security group or the equivalent.
