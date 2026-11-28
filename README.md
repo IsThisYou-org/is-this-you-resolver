@@ -287,3 +287,7 @@ Host port 8080 stays published in `tls-handshake` and `tls-icann`. Port 8081 sta
 Handshake peer port 12038 is not published by `compose.yaml`. The node still syncs over outbound connections. Without inbound 12038 it is a private node, not a public one. To run a public node, publish `12038/tcp` on `handshake-full-node` and open it in the firewall.
 
 Containers use `restart: unless-stopped`. The component `dkrun` scripts are interactive and do not set a restart policy.
+
+## Continuous integration
+
+GitHub Actions (`.github/workflows/ci.yml`) runs on push and on pull request. The job sets `COMPOSE_PROFILES=icann`, which replaces the `handshake` value in `.env`, and starts that profile only. There is no Handshake node and no TLS. It pulls the published images named in `compose.yaml` and checks classic DNS on port 53, DNS-over-HTTPS on port 8080, and the Unbound Prometheus metrics on `127.0.0.1:9167`. Each image is tested in its own repository.

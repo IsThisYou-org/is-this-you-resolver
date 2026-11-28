@@ -10,7 +10,9 @@ data/ethereum-dns-gateway/logs/
 data/is-this-you-icann-resolver/logs/
 data/is-this-you-icann-resolver/root.zone
 
-# Produced by is-this-you-icann-resolver/dkmk. Never commit it.
+# Produced before a local image build (`date +%Y%m%d.%H%M > build.txt`).
+# Never commit it. CI uses the published images and does not create this file.
+build.txt
 is-this-you-icann-resolver/build.txt
 is-this-you-icann-resolver/data/
 

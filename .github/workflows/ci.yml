@@ -1,0 +1,88 @@
+name: CI
+
+# Compose wiring for the icann profile only. That mode has no Handshake
+# node and no TLS. .env sets COMPOSE_PROFILES=handshake; a --profile
+# flag, or COMPOSE_PROFILES in the environment, replaces that list.
+# This job sets COMPOSE_PROFILES=icann so up, ps, logs and down all
+# stay on that mode.
+#
+# Images are the published Docker Hub tags named in compose.yaml.
+# This job does not build an image, so it does not write build.txt.
+# A local image build must run `date +%Y%m%d.%H%M > build.txt` first.
+# build.txt is gitignored and must not be committed.
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install shellcheck
+        run: sudo apt-get update && sudo apt-get install -y shellcheck
+
+      - name: Shellcheck
+        run: shellcheck ci/icann.sh
+
+      - name: actionlint
+        run: |
+          set -eu
+          curl -fsSL -o /tmp/download-actionlint.bash https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash
+          mkdir -p /tmp/actionlint-bin
+          bash /tmp/download-actionlint.bash 1.7.12 /tmp/actionlint-bin
+          /tmp/actionlint-bin/actionlint -color
+
+  icann:
+    name: icann profile, no TLS
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      COMPOSE_PROFILES: icann
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dig
+        run: sudo apt-get update && sudo apt-get install -y bind9-dnsutils
+
+      - name: Start the icann profile
+        run: |
+          set -eu
+          services=$(docker compose config --services | LC_ALL=C sort)
+          printf 'Services:\n%s\n' "${services}"
+          expected=$(printf '%s\n' is-this-you-icann-resolver json-doh-proxy-icann | LC_ALL=C sort)
+          if test "${services}" != "${expected}"
+          then
+            printf 'The icann profile selected unexpected services\n' >&2
+            exit 1
+          fi
+          docker compose pull || {
+            sleep 15
+            docker compose pull
+          }
+          docker compose up -d
+          docker compose ps -a
+
+      - name: Live checks
+        run: ./ci/icann.sh
+
+      - name: Compose logs
+        if: failure() || cancelled()
+        run: |
+          docker compose ps -a || true
+          docker compose logs || true
+
+      - name: Stop the stack
+        if: always()
+        run: docker compose down --remove-orphans || true
