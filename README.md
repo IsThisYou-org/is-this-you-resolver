@@ -43,7 +43,7 @@ docker compose --profile tls-handshake up -d
 
 `json` leaves `LOCAL_ICANN_ROOT` unset and sets `DOH_SERVERS` to `https://dns.google/dns-query,https://cloudflare-dns.com/dns-query`. Ordinary queries go to Google and Cloudflare over DoH. `servers=icann-root` is handled inside json-doh-proxy, which this repository does not build.
 
-`icann` points json-doh-proxy at `172.30.53.60`. `DOH_SERVERS` and `LOCAL_ICANN_ROOT` are both that address. `is-this-you-icann-resolver` runs Unbound from Alpine 3.24. It holds `.` as an `auth-zone`, transferred from the ICANN transfer servers `192.0.32.132` and `192.0.47.132` and from `c` and `f` root, with `zonemd-check`, `for-downstream` and `for-upstream` on, and DNSSEC validation with the root trust anchor shipped in the image. `rd=0` queries for data in that zone (`. SOA`, `com. DS`) are authoritative. A query for a name below a delegation is a referral from this copy of the root. Until `jamesstevens/is-this-you-icann-resolver` is published, build it locally with `is-this-you-icann-resolver/dkmk`. This repository does not push the image.
+`icann` points json-doh-proxy at `172.30.53.60`. `DOH_SERVERS` and `LOCAL_ICANN_ROOT` are both that address. `is-this-you-icann-resolver` runs Unbound from Alpine 3.24. It holds `.` as an `auth-zone` in the RFC 8806 style: `for-downstream: no`, `for-upstream: yes`, `fallback-enabled: yes`, with `zonemd-check` and `zonemd-reject-absence`. The zone is transferred from the ICANN transfer servers `192.0.32.132` and `192.0.47.132` and from `c` and `f` root. Unbound uses that copy for its own lookups and validates with the root trust anchor (copied into the chroot at start-up). It does not serve the zone authoritatively to clients, so `rd=0` queries are not answered with `AA=1` from this copy of the root. Private-range clients have `allow_snoop`, so an `rd=0` query can return data already in the cache; an uncached `rd=0` query is typically REFUSED. Ordinary client queries use `rd=1`. Until `jamesstevens/is-this-you-icann-resolver` is published, build it locally with `is-this-you-icann-resolver/dkmk`. This repository does not push the image.
 
 `handshake` keeps the previous environment. `DOH_SERVERS` is `172.30.53.20`. `LOCAL_ICANN_ROOT` is unset.
 
@@ -231,7 +231,7 @@ The same host directory is scratch space. The container creates directories ther
 | `handshake-full-node/` | `/opt/data` | Handshake chain data, in `hsd/` inside that directory. Allow 45 to 50 GB. The container also writes `logs/` here. |
 | `ethereum-dns-gateway/` | `/opt/data` | Gateway syslog, in `logs/`. |
 | `handshake-volume-resolver/` | `/opt/data` | Resolver state and syslog. Optional authoritative zones go in `auth_zones/`, one file per zone, file name equal to the zone name. handshake-volume-resolver PR #13 (merge `e7ccf5b`, 11 November 2026) fixed `start_named` so an empty `/opt/data/auth_zones` no longer loads a zone named `*`. The fix reaches Docker Hub `latest` only after that image is rebuilt and pushed. Until the published image includes the fix, create `auth_zones` only when it contains zone files. |
-| `is-this-you-icann-resolver/` | `/opt/data` | Root zone file (`root.zone`) and syslog, in `logs/`. Profile `icann` only. |
+| `is-this-you-icann-resolver/` | `/opt/data` | Chroot and zone file (`unbound/root.zone`), trust anchor, control socket, and syslog in `logs/`. Profile `icann` only. |
 | `easy-nginx/` | `/opt/data` | easy-nginx scratch space, `etc/nginx.input`, and `pems/`. Profiles `tls-handshake` and `tls-icann` only. |
 
 handshake-full-node stores the chain in `/opt/data/hsd` (`bin/run_hsd`; `master` and `dev` are both `42957c8`) and changes that directory's owner to the `hsd` user. `rd_bit_proxy` listens on port 53. hsd itself still uses a separate authoritative port (root zone only) and a recursive port; the proxy is how both are reached, split on the RD bit.
@@ -270,7 +270,15 @@ Left at the image defaults, and documented by those READMEs:
 | `127.0.0.1:9119` | BIND metrics |
 | `127.0.0.1:8405` | HAProxy metrics |
 | `127.0.0.1:8083` | dnsdist metrics, only after the two stats variables above are set |
+| `127.0.0.1:9167` | Unbound Prometheus metrics (`unbound_exporter`), `icann` and `tls-icann` |
 | `80`, `443` | easy-nginx. Profiles `tls-handshake` and `tls-icann` only |
+
+`127.0.0.1:9167` is deliberately bound to loopback, as are the other metrics ports. A Prometheus merger or proxy on the Docker host can scrape every container's loopback exporter and expose a single port, so fewer ports stay open.
+
+- [exporter-merger](https://github.com/rebuy-de/exporter-merger) merges several `/metrics` endpoints into one.
+- [exporter_exporter](https://github.com/QubitProducts/exporter_exporter) is a reverse proxy that puts several exporters behind one port (`/proxy?module=...`).
+
+If you are not running one, change the bind address in `compose.yaml`.
 
 The gateway's UDP port 53 is not published. Only BIND on the `resolver` network sends queries there. Client TCP to host port 53 still works. The TCP limit is the last hop, from BIND to the gateway.
 
