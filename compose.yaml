@@ -91,6 +91,10 @@ services:
     container_name: is-this-you-icann-resolver
     read_only: true
     restart: unless-stopped
+    ulimits:
+      nofile:
+        soft: 8192
+        hard: 8192
     networks:
       resolver:
         ipv4_address: 172.30.53.60
@@ -99,6 +103,7 @@ services:
     ports:
       - "53:53/tcp"
       - "53:53/udp"
+      - "127.0.0.1:9167:9167"
 
   # One container name, three service keys: the environment differs by mode,
   # and only one mode is started. The container is always json-doh-proxy.
